@@ -294,7 +294,7 @@ sub io_line
       return;
       }
 
-    # Calculate a server token    
+    # Calculate a server token
     my $servertoken;
     foreach (0 .. 21)
       { $servertoken .= substr($b64tab,rand(64),1); }
@@ -331,7 +331,7 @@ sub io_line
     $conns{$fn}{'tx'} += length($towrite);
     $hdl->push_write($towrite);
     return if ($hdl->destroyed);
-    
+
     # Account for it...
     $utilisations{$vehicleid.'-'.$clienttype}{'rx'} += length($line)+2;
     $utilisations{$vehicleid.'-'.$clienttype}{'tx'} += $towrite;
@@ -348,7 +348,7 @@ sub io_line
 #      &io_tx($fn, $hdl, 'C', '4,4,54.197.255.127');
 #      }
     }
-  
+
   elsif ($line =~ /^AP-C\s+(\S)\s+(\S+)/)
     {
     #
@@ -389,7 +389,7 @@ sub io_line
     $conns{$fn}{'tx'} += length($towrite);
     $hdl->push_write($towrite);
     }
-  
+
   elsif (defined $conns{$fn}{'vehicleid'})
     {
     #
@@ -408,7 +408,7 @@ sub io_line
       return;
       }
     }
-  
+
   else
     {
     &log($fn, $clienttype, $vid, "error - unrecognised message from vehicle", "error");
@@ -421,7 +421,7 @@ sub io_login
   my ($fn,$hdl,$vehicleid,$clienttype,$rest) = @_;
 
   &log($fn, $clienttype, $vehicleid, "got login");
-  
+
   if ($clienttype eq 'A')
     {
     #
@@ -459,7 +459,7 @@ sub io_login
       }
     &io_tx($fn, $hdl, 'T', $vrec->{'v_lastupdatesecs'});
     }
-  
+
   elsif ($clienttype eq 'B')
     {
     #
@@ -491,7 +491,7 @@ sub io_login
       }
     &io_tx($fn, $hdl, 'T', $vrec->{'v_lastupdatesecs'});
     }
-  
+
   elsif ($clienttype eq 'S')
     {
     #
@@ -508,7 +508,7 @@ sub io_login
     $conns{$fn}{'svrupdate_o'} = $svrupdate_o;
     &svr_push($fn,$vehicleid);
     }
-  
+
   elsif ($clienttype eq 'C')
     {
     #
@@ -555,12 +555,13 @@ sub io_terminate
       }
     elsif ($conns{$fn}{'clienttype'} eq 'A')
       {
+      &io_cleanup_cmdqueue($fn,"A",$vehicleid);
       delete $app_conns{$vehicleid}{$fn};
       # Notify car about new app count
       &io_tx_car($vehicleid, 'Z', scalar keys %{$app_conns{$vehicleid}});
       # Cleanup group messages
       if (defined $conns{$fn}{'appgroups'})
-        {   
+        {
         foreach (keys %{$conns{$fn}{'appgroups'}})
           {
           delete $group_subs{$_}{$fn};
@@ -569,6 +570,7 @@ sub io_terminate
       }
     elsif ($conns{$fn}{'clienttype'} eq 'B')
       {
+      &io_cleanup_cmdqueue($fn,"B",$vehicleid);
       delete $btc_conns{$vehicleid}{$fn};
       }
     elsif ($conns{$fn}{'clienttype'} eq 'S')
@@ -583,10 +585,30 @@ sub io_terminate
   return;
   }
 
+sub io_cleanup_cmdqueue
+  {
+  my ($fn,$clienttype,$vehicleid) = @_;
+
+  my $cfn = $car_conns{$vehicleid};
+  my $changed = 0;
+  if (scalar @{$conns{$cfn}{'cmdqueue'}} > 0)
+    {
+    foreach my $fd (@{$conns{$cfn}{'cmdqueue'}})
+      {
+      if ($fd eq $fn)
+        { $fd=0; $changed=1; }
+      }
+    }
+  if ($changed)
+    {
+    AE::log info => "#$fn $clienttype $vehicleid cmd cleanup of #$fn for $vehicleid (queue now ".join(',',@{$conns{$cfn}{'cmdqueue'}}).")";
+    }
+  }
+
 sub io_tx
   {
   my ($fn, $handle, $code, $data) = @_;
-  
+
   return if ($handle->destroyed);
 
   my $vid = $conns{$fn}{'vehicleid'};
@@ -778,7 +800,7 @@ sub util_tim
             $vid,$u_a_tx,$u_c_tx);
     }
   %utilisations = ();
-  
+
   # Log current server connection counts
   my $concount = keys %conns;
   my $carcount = keys %car_conns;
@@ -993,6 +1015,13 @@ sub io_message
         }
       return;
       }
+    my $cfn = $car_conns{$vehicleid};
+    if (defined $cfn)
+      {
+      # Let's record the FN of the app/batch sending this command
+      push @{$conns{$cfn}{'cmdqueue'}},$fn;
+      AE::log info => "#$fn $clienttype $vehicleid cmd req for $vehicleid (queue now ".join(',',@{$conns{$cfn}{'cmdqueue'}}).")";
+      }
     &io_tx_car($vehicleid, $code, $data); # Send it on to the car
     return;
     }
@@ -1004,8 +1033,36 @@ sub io_message
       return;
       }
     # Forward to apps and batch clients
-    &io_tx_apps($vehicleid, $code, $data);
-    &io_tx_btcs($vehicleid, $code, $data);
+    if (scalar @{$conns{$fn}{'cmdqueue'}} > 0)
+      {
+      # We have a specific client to send the response to
+      my $cfn;
+      # Nasty hacky code to determine multi-line responses for command functions 1 and 3
+      my ($func,$result,$now,$max,$rest) = split /,/,$data,5;
+      if ((($func == 1)||($func == 3)) &&
+          (($result != 0)||($now < ($max-1))))
+        {
+        $cfn = $conns{$fn}{'cmdqueue'}[0];
+        }
+      $cfn = shift @{$conns{$fn}{'cmdqueue'}} if (!defined $cfn);
+      if ($cfn == 0)
+        {
+        # Client has since disconnected, so ignore it.
+        AE::log info => "#$fn $clienttype $vehicleid cmd rsp discard for $vehicleid (queue now ".join(',',@{$conns{$fn}{'cmdqueue'}}).")";
+        }
+      else
+        {
+        # Send to this one specific client
+        AE::log info => "#$fn $clienttype $vehicleid cmd rsp to #$cfn for $vehicleid (queue now ".join(',',@{$conns{$fn}{'cmdqueue'}}).")";
+        &io_tx($cfn, $conns{$cfn}{'handle'}, $code, $data);
+        }
+      }
+    else
+      {
+      # Send it to all clients...
+      &io_tx_apps($vehicleid, $code, $data);
+      &io_tx_btcs($vehicleid, $code, $data);
+      }
     return;
     }
   elsif ($m_code eq 'g')
@@ -1183,7 +1240,7 @@ sub svr_push
   $sth->execute($vehicleid,$conns{$fn}{'svrupdate_v'});
   while (my $row = $sth->fetchrow_hashref())
     {
-    &io_tx($fn, $conns{$fn}{'handle'}, 'RV', 
+    &io_tx($fn, $conns{$fn}{'handle'}, 'RV',
             join(',',$row->{'vehicleid'},$row->{'owner'},$row->{'carpass'},
                      $row->{'v_server'},$row->{'deleted'},$row->{'changed'}));
     $conns{$fn}{'svrupdate_v'} = $row->{'changed'};
@@ -1291,7 +1348,7 @@ sub svr_line
     {
     my ($owner,$name,$mail,$pass,$status,$deleted,$changed) = split(/,/,$1);
     AE::log info => "#$fn - - svr got owner record update $owner ($changed)";
-  
+
     $db->do('INSERT INTO ovms_owners (owner,name,mail,pass,status,deleted,changed) '
           . 'VALUES (?,?,?,?,?,?,?) '
           . 'ON DUPLICATE KEY UPDATE name=?, mail=?, pass=?, status=?, deleted=?, changed=?',
@@ -1308,7 +1365,7 @@ sub svr_error
 
   AE::log note => "#$fn - - svr got disconnect from remote";
 
-  undef $svr_handle;  
+  undef $svr_handle;
   }
 
 sub svr_timeout
@@ -1346,28 +1403,28 @@ sub push_queuenotify
     $rec{'pushkeytype'} = $row->{'pushkeytype'};
     $rec{'pushkeyvalue'} = $row->{'pushkeyvalue'};
     $rec{'appid'} = $row->{'appid'};
-    
+
     # send mail notifications:
     if ($row->{'pushtype'} eq 'mail' && $mail_enabled eq 1)
       {
       push @mail_queue,\%rec;
       AE::log info => "- - $vehicleid msg queued mail notification for $rec{'pushkeyvalue'}";
       }
-    
+
     # send Google push notification:
     if ($row->{'pushtype'} eq 'gcm')
       {
       push @gcm_queue,\%rec;
       AE::log info => "- - $vehicleid msg queued gcm notification for $rec{'pushkeytype'}:$rec{'appid'}";
       }
-    
+
     # check active connections:
     foreach (%{$app_conns{$vehicleid}})
       {
       my $fn = $_;
       next CANDIDATE if ($conns{$fn}{'appid'} eq $row->{'appid'}); # Car connected?
       }
-    
+
     # send Apple push notification:
     if ($row->{'pushtype'} eq 'apns')
       {
@@ -1377,7 +1434,7 @@ sub push_queuenotify
         { push @apns_queue_production,\%rec; }
       AE::log info => "- - $vehicleid msg queued apns notification for $rec{'pushkeytype'}:$rec{'appid'}";
       }
-      
+
     }
   }
 
@@ -1753,7 +1810,7 @@ sub http_request_api_vehicle_delete
   {
   my ($httpd,$req,$session,@rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );    
+  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -1949,7 +2006,7 @@ sub http_request_api_charge_get
     $httpd->stop_request;
     return;
     }
-  
+
   my $rec = &api_vehiclerecord($vehicleid,'S');
   my %result;
   if (defined $rec)
@@ -2204,7 +2261,7 @@ sub http_request_api_historical
         {
         $h{$_} = $row->{$_};
         }
-      push @result, \%h;      
+      push @result, \%h;
       }
     }
   else
@@ -2512,11 +2569,11 @@ my $loghistory_rec = 0;
 sub log
   {
   my ($fh, $clienttype, $vid, $msg, $level) = @_;
-  
+
   $clienttype = "-" if !defined($clienttype);
   $vid = "-" if !defined($vid);
   $level = "info" if !defined($level);
-  
+
   AE::log $level, "#$fh $clienttype $vid $msg";
 
   return if ($loghistory_tim<=0);
@@ -2527,4 +2584,3 @@ sub log
             $vid,$loghistory_rec++,"#$fh $clienttype $msg",$loghistory_tim);
   $loghistory_rec=0 if ($loghistory_rec>65535);
   }
-
