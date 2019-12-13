@@ -33,7 +33,7 @@ use constant TCP_KEEPCNT => 6;
 
 # Global Variables
 
-my $VERSION = "2.5.0-20191024";
+my $VERSION = "2.5.0-20191213";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
@@ -92,11 +92,12 @@ foreach (sort glob 'ovms_server*.vece')
   }
 
 # Globals
-my $timeout_app      = $config->val('server','timeout_app',60*20);
-my $timeout_car      = $config->val('server','timeout_car',60*16);
-my $timeout_svr      = $config->val('server','timeout_svr',60*60);
-my $timeout_api      = $config->val('server','timeout_api',60*2);
-my $loghistory_tim   = $config->val('log','history',0);
+my $timeout_app       = $config->val('server','timeout_app',60*20);
+my $timeout_car       = $config->val('server','timeout_car',60*16);
+my $timeout_svr       = $config->val('server','timeout_svr',60*60);
+my $timeout_api       = $config->val('server','timeout_api',60*2);
+my $loghistory_tim    = $config->val('log','history',0);               # Retain history logs (seconds)
+my $notifyhistory_tim = $config->val('push','history',0);              # Retain history push notifications (seconds)
 
 # User password encoding function:
 my $pw_encode        = $config->val('db','pw_encode','drupal_password($password)');
@@ -1378,6 +1379,7 @@ sub svr_timeout
   undef $svr_handle;
   }
 
+my $notifyhistory_rec = 0;
 sub push_queuenotify
   {
   my ($vehicleid, $alerttype, $alertmsg) = @_;
@@ -1388,9 +1390,22 @@ sub push_queuenotify
     # VECE expansion...
     my ($vehicletype,$errorcode,$errordata) = split(/,/,$alertmsg);
     $alertmsg = &vece_expansion($vehicletype,$errorcode,$errordata);
-    return if ($alertmsg =~ /\:\sDMC\:/); # Ignore DMC (debug) alerts
     }
 
+  # Log the alert
+  if ($notifyhistory_tim > 0)
+    {
+    $db->do('INSERT INTO ovms_historicalmessages (vehicleid,h_timestamp,h_recordtype,h_recordnumber,h_data,h_expires) '
+          . 'VALUES (?,UTC_TIMESTAMP(),"*-Log-Notification",?,?,UTC_TIMESTAMP()+INTERVAL ? SECOND) ',
+            undef,
+            $vehicleid,$notifyhistory_rec++,"$alerttype,$alertmsg",$notifyhistory_tim);
+    $notifyhistory_rec=0 if ($notifyhistory_rec>65535);
+    }
+
+  # Ignore DMC (debug) alerts
+  return if (($alerttype eq 'E') && ($alertmsg =~ /\:\sDMC\:/));
+
+  # Push the notifications out to subscribers...
   my $sth = $db->prepare('SELECT * FROM ovms_notifies WHERE vehicleid=? and active=1');
   $sth->execute($vehicleid);
   CANDIDATE: while (my $row = $sth->fetchrow_hashref())
