@@ -33,7 +33,7 @@ use constant TCP_KEEPCNT => 6;
 
 # Global Variables
 
-my $VERSION = "2.6.0-20191213";
+my $VERSION = "2.6.1-20200106";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
@@ -1549,7 +1549,14 @@ sub apns_push
     my $pushkeyvalue = $rec->{'pushkeyvalue'};
     my $appid = $rec->{'appid'};
     AE::log info => "#$fn - $vehicleid msg apns '$alertmsg' => $pushkeyvalue";
-    &apns_send( $pushkeyvalue => { aps => { alert => "$vehicleid\n$alertmsg", sound => 'default' } } );
+    if ($pushkeyvalue == "{length=32")
+      {
+      AE::log error => "#$fn - $vehicleid msg apns skipped: invalid registration";
+      }
+    else
+      {
+      &apns_send( $pushkeyvalue => { aps => { alert => "$vehicleid\n$alertmsg", sound => 'default' } } );
+      }
     }
   $apns_handle->on_drain(sub
                 {
