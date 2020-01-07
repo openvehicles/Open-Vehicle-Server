@@ -33,7 +33,7 @@ use constant TCP_KEEPCNT => 6;
 
 # Global Variables
 
-my $VERSION = "2.6.1-20200106";
+my $VERSION = "2.6.2-20200107";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
@@ -1441,8 +1441,14 @@ sub push_queuenotify
       }
 
     # send Apple push notification:
+    # … but skip invalid iOS13 tokens '{length=32'
     if ($row->{'pushtype'} eq 'apns')
       {
+      if ($row->{'pushkeyvalue'} eq '{length=32')
+        {
+        AE::log error => "- - $vehicleid msg skipped apns notification for $rec{'pushkeytype'}:$rec{'appid'} -- invalid token";
+        next CANDIDATE;
+        }
       if ($row->{'pushkeytype'} eq 'sandbox')
         { push @apns_queue_sandbox,\%rec; }
       else
@@ -1538,6 +1544,14 @@ sub apns_push
   {
   my ($hdl, $success, $error_message) = @_;
 
+  if (!$success)
+    {
+    AE::log error => "- - - connection to apns FAILED: $error_message";
+    undef $apns_handle;
+    $apns_running=0;
+    return;
+    }
+
   my $fn = $hdl->fh->fileno();
   AE::log info => "#$fn - - connected to apns for push notification";
 
@@ -1549,14 +1563,7 @@ sub apns_push
     my $pushkeyvalue = $rec->{'pushkeyvalue'};
     my $appid = $rec->{'appid'};
     AE::log info => "#$fn - $vehicleid msg apns '$alertmsg' => $pushkeyvalue";
-    if ($pushkeyvalue == "{length=32")
-      {
-      AE::log error => "#$fn - $vehicleid msg apns skipped: invalid registration";
-      }
-    else
-      {
-      &apns_send( $pushkeyvalue => { aps => { alert => "$vehicleid\n$alertmsg", sound => 'default' } } );
-      }
+    &apns_send( $pushkeyvalue => { aps => { alert => "$vehicleid\n$alertmsg", sound => 'default' } } );
     }
   $apns_handle->on_drain(sub
                 {
@@ -1604,11 +1611,28 @@ sub apns_tim
           tls_ctx  => { cert_file => $certfile, key_file => $keyfile, verify => 0, verify_peername => $host },
           on_error => sub
                 {
+                my ($hdl, $fatal, $msg) = @_;
+                AE::log error => "- - - msg apns processing ABORT for $host: $msg";
                 $apns_handle = undef;
                 $apns_running = 0;
                 $_[0]->destroy;
                 },
-          on_starttls => \&apns_push
+          timeout    => 60,
+          on_timeout => sub
+                {
+                AE::log error => "- - - msg apns processing ABORT for $host: TIMEOUT";
+                $apns_handle = undef;
+                $apns_running = 0;
+                $_[0]->destroy;
+                },
+          on_starttls => \&apns_push,
+          on_stoptls  => sub
+                {
+                AE::log error => "- - - msg apns processing ABORT for $host: connection closed";
+                $apns_handle = undef;
+                $apns_running = 0;
+                $_[0]->destroy;
+                }
           );
     }
   }
