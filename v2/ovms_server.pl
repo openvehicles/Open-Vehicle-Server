@@ -33,7 +33,7 @@ use constant TCP_KEEPCNT => 6;
 
 # Global Variables
 
-my $VERSION = "2.6.2-20200107";
+my $VERSION = "2.6.3-20200202";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
@@ -98,6 +98,7 @@ my $timeout_svr       = $config->val('server','timeout_svr',60*60);
 my $timeout_api       = $config->val('server','timeout_api',60*2);
 my $loghistory_tim    = $config->val('log','history',0);               # Retain history logs (seconds)
 my $notifyhistory_tim = $config->val('push','history',0);              # Retain history push notifications (seconds)
+my $mqtt_superuser    = $config->val('mqtt','superuser');              # MQTT superuser
 
 # User password encoding function:
 my $pw_encode        = $config->val('db','pw_encode','drupal_password($password)');
@@ -697,6 +698,9 @@ $http_server->reg_cb (
                 '/electricracekml' => \&http_request_in_electricracekml,
                 '/electricracekmlfull' => \&http_request_in_electricracekmlfull,
                 '/electricrace' => \&http_request_in_electricrace,
+                '/mqapi/auth' => \&http_request_in_mqapi_auth,
+                '/mqapi/superuser' => \&http_request_in_mqapi_superuser,
+                '/mqapi/acl' => \&http_request_in_mqapi_acl,
                 '' => \&http_request_in_root
                 );
 $http_server->reg_cb (
@@ -720,6 +724,9 @@ if (-e 'ovms_server.pem')
                    '/group' => \&http_request_in_group,
                    '/api' => \&http_request_in_api,
                    '/file' => \&http_request_in_file,
+                   '/mqapi/auth' => \&http_request_in_mqapi_auth,
+                   '/mqapi/superuser' => \&http_request_in_mqapi_superuser,
+                   '/mqapi/acl' => \&http_request_in_mqapi_acl,
                    '' => \&http_request_in_root
                    );
   $https_server->reg_cb (
@@ -2388,6 +2395,123 @@ sub http_request_in_api
   $httpd->stop_request;
   }
 
+sub http_request_in_mqapi_auth
+  {
+  my ($httpd, $req) = @_;
+
+  my $method = $req->method;
+  if ($method ne 'POST')
+    {
+    $req->respond ( [404, 'Unrecongised API call', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Unrecognised API call\n"] );
+    $httpd->stop_request;
+    return;
+    }
+
+  my $p_username = $req->parm('username');
+  my $p_password = $req->parm('password');
+  my $p_topic    = $req->parm('topic');
+  my $p_acc      = $req->parm('acc');
+
+  if ((defined $p_username)&&(defined $p_password))
+    {
+    my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `name`=? and `status`=1 AND deleted="0000-00-00 00:00:00"');
+    $sth->execute($p_username);
+    my $row = $sth->fetchrow_hashref();
+    if (defined $row)
+      {
+      my $passwordhash = $row->{'pass'};
+      if (&drupal_password_check($passwordhash, $p_password))
+        {
+        AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'SUCCESS');
+        $req->respond ( [200, 'Authentication OK', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+        $httpd->stop_request;
+        return;
+        }
+      }
+    }
+
+  AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'FAILED');
+  $req->respond ( [403, 'Authentication FAILED', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+  $httpd->stop_request;
+  }
+
+sub http_request_in_mqapi_superuser
+  {
+  my ($httpd, $req) = @_;
+
+  my $method = $req->method;
+  if ($method ne 'POST')
+    {
+    $req->respond ( [404, 'Unrecongised API call', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Unrecognised API call\n"] );
+    $httpd->stop_request;
+    return;
+    }
+
+  if ((!defined $mqtt_superuser)||($mqtt_superuser eq ''))
+    {
+    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'NOSUPERUSER');
+    $req->respond ( [403, 'Not a superuser', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+    }
+  else
+    {
+    my $p_username = $req->parm('username');
+
+    if ((defined $p_username)&&($p_username eq $mqtt_superuser))
+      {
+      AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'SUPERUSER');
+      $req->respond ( [200, 'Is a superuser', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+      }
+    else
+      {
+      AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'NORMALUSER');
+      $req->respond ( [403, 'Not a superuser', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+      }
+    }
+
+  $httpd->stop_request;
+  }
+
+sub http_request_in_mqapi_acl
+  {
+  my ($httpd, $req) = @_;
+
+  my $method = $req->method;
+  if ($method ne 'POST')
+    {
+    $req->respond ( [404, 'Unrecongised API call', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Unrecognised API call\n"] );
+    $httpd->stop_request;
+    return;
+    }
+
+  my $p_username = $req->parm('username');
+  my $p_topic    = $req->parm('topic');
+  my $p_clientid = $req->parm('clientid');
+  my $p_acc      = $req->parm('acc');
+
+  if ((defined $mqtt_superuser)&&($mqtt_superuser ne '')&&
+      (defined $p_username)&&($p_username eq $mqtt_superuser))
+    {
+    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic,'PERMIT');
+    $req->respond ( [200, 'Superuser acl is permitted', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+    $httpd->stop_request;
+    return;
+    }
+
+  if ((defined $p_username)&&(defined $p_topic)&&
+      (substr($p_topic,0,length($p_username)+6) eq 'ovms/'.$p_username.'/'))
+    {
+    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic, 'PERMIT');
+    $req->respond ( [200, 'Access granted', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+    }
+  else
+    {
+    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic, 'DENY');
+    $req->respond ( [403, 'Access denied', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
+    }
+
+  $httpd->stop_request;
+  }
+
 sub api_tim
   {
   foreach my $session (keys %api_conns)
@@ -2559,6 +2683,56 @@ EOT
       join("\n",@result)
    ]);
   $httpd->stop_request;
+  }
+
+sub drupal_password_check
+  {
+  my ($ph,$password) = @_;
+
+  my $iter_log2 = index($itoa64,substr($ph,3,1));
+  my $iter_count = 1 << $iter_log2;
+
+  my $phash = substr($ph,0,12);
+  my $salt = substr($ph,4,8);
+
+  my $hash = sha512($salt.$password);
+  do
+    {
+    $hash = sha512($hash.$password);
+    $iter_count--;
+    } while ($iter_count > 0);
+
+  my $encoded = substr($phash . &drupal_password_base64_encode($hash,length($hash)),0,55);
+
+  return ($encoded eq $ph);
+  }
+
+sub drupal_password_base64_encode
+  {
+  my ($input, $count) = @_;
+  my $output = '';
+  my $i = 0;
+  do {
+    my $value = ord(substr($input,$i++,1));
+    $output .= substr($itoa64,$value & 0x3f,1);
+    if ($i < $count) {
+      $value |= ord(substr($input,$i,1)) << 8;
+    }
+    $output .= substr($itoa64,($value >> 6) & 0x3f,1);
+    if ($i++ >= $count) {
+      break;
+    }
+    if ($i < $count) {
+      $value |= ord(substr($input,$i,1)) << 16;
+    }
+    $output .= substr($itoa64,($value >> 12) & 0x3f,1);
+    if ($i++ >= $count) {
+      break;
+    }
+    $output .= substr($itoa64,($value >> 18) & 0x3f,1);
+  } while ($i < $count);
+
+  return $output;
   }
 
 sub drupal_password
