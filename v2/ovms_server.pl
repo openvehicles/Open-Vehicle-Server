@@ -665,6 +665,7 @@ sub io_tx_btcs
 ########################################################
 # MAIN TCP server
 #
+
 tcp_server undef, 6867, sub
   {
   my ($fh, $host, $port) = @_;
@@ -686,6 +687,37 @@ tcp_server undef, 6867, sub
   $conns{$fn}{'port'} = $port;
   };
 
+if (-e 'ovms_server.pem')
+  {
+  tcp_server undef, 6870, sub
+    {
+    my ($fh, $host, $port) = @_;
+    my $key = "$host:$port";
+    $fh->blocking(0);
+    my $fn = $fh->fileno();
+    AE::log info => "#$fn - new TLS ovms connection from $host:$port";
+    my $handle; $handle = new AnyEvent::Handle(
+      fh => $fh,
+      tls      => "accept",
+      tls_ctx  => { cert_file => "ovms_server.pem" },
+      on_error => \&io_error,
+      on_rtimeout => \&io_timeout,
+      keepalive => 1,
+      no_delay => 1,
+      rtimeout => 30);
+    $handle->push_read (line => \&io_line);
+
+    setsockopt($fh, SOL_SOCKET, SO_KEEPALIVE, 1);
+    setsockopt($fh, SOL_TCP, TCP_KEEPCNT, 9);
+    setsockopt($fh, SOL_TCP, TCP_KEEPIDLE, 240);
+    setsockopt($fh, SOL_TCP, TCP_KEEPINTVL, 240);
+
+    $conns{$fn}{'fh'} = $fh;
+    $conns{$fn}{'handle'} = $handle;
+    $conns{$fn}{'host'} = $host;
+    $conns{$fn}{'port'} = $port;
+    };
+  };
 
 ########################################################
 # API HTTP server
