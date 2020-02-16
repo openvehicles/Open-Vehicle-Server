@@ -33,7 +33,7 @@ use constant TCP_KEEPCNT => 6;
 
 # Global Variables
 
-my $VERSION = "2.6.3-20200202";
+my $VERSION = "2.6.4-20200216";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
@@ -1643,7 +1643,14 @@ sub apns_tim
     {
     my ($fh) = @_;
 
-    $apns_handle = new AnyEvent::Handle(
+    if (!$fh)
+      {
+      AE::log error => "- - - msg apns processing ERROR connecting $host: $!";
+      $apns_running = 0;
+      }
+    else
+      {
+      $apns_handle = new AnyEvent::Handle(
           fh       => $fh,
           peername => $host,
           tls      => "connect",
@@ -1673,6 +1680,7 @@ sub apns_tim
                 $_[0]->destroy;
                 }
           );
+      }
     }
   }
 
