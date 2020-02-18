@@ -92,14 +92,39 @@ If you get "ERROR 1044 (42000): Access denied", fix it before proceeding. The mo
 is a mistake in your mysql user grant rights.
 
 
-5. RUN THE SERVER
+5. ENABLE SSL (optional)
+
+If you want to support SSL connections to your server (port 6869 for the REST API, port 6870 for
+OVMS MP), you need to supply a certificate. You can create a self-signed certificate or get a
+certificate signed by some root CA for your server.
+
+In both cases you need to merge the private key PEM and the chain PEM into the file "ovms_server.pem"
+located in the same directory as the "ovms_server.pl". Also take care to secure the file, as it now
+contains your private key.
+
+To create a self-signed certificate, do:
+
+  $ openssl req -sha256 -newkey rsa:4096 -nodes -keyout privkey.pem -x509 -days 365 -out fullchain.pem
+  $ cat privkey.pem fullchain.pem >ovms_server.pem
+  $ chmod 0600 ovms_server.pem
+
+Or, if you want to reuse e.g. your Let's Encrypt server certificate, do this as root:
+
+  # cat /etc/letsencrypt/live/yourhost/privkey.pem /etc/letsencrypt/live/yourhost/fullchain.pem >ovms_server.pem
+  # chmod 0600 ovms_server.pem
+  # chown youruid. ovms_server.pem
+
+… and add a cron job or certbot hook to check for renewals and redo these steps as necessary.
+
+
+6. RUN THE SERVER
 
 Get the ovms_server.pl code from github and run it with:
 
   $ ./ovms_server.pl
 
 
-6. ENJOY
+7. ENJOY
 
 Any questions/comments, please let us know.
 
