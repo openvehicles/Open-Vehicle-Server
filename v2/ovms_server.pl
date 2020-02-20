@@ -33,7 +33,7 @@ use constant TCP_KEEPCNT => 6;
 
 # Global Variables
 
-my $VERSION = "2.6.4-20200216";
+my $VERSION = "2.6.5-20200220";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
@@ -101,7 +101,7 @@ my $notifyhistory_tim = $config->val('push','history',0);              # Retain 
 my $mqtt_superuser    = $config->val('mqtt','superuser');              # MQTT superuser
 
 # User password encoding function:
-my $pw_encode        = $config->val('db','pw_encode','drupal_password($password)');
+my $pw_check         = $config->val('db','pw_check','drupal_password_check($passwordhash,$password)');
 
 # Database ticker
 $db = DBI->connect($config->val('db','path'),$config->val('db','user'),$config->val('db','pass'));
@@ -1783,8 +1783,8 @@ sub http_request_api_cookie_login
     if (defined $row)
       {
       my $passwordhash = $row->{'pass'};
-      my $encoded = eval $pw_encode;
-      if ($encoded eq $passwordhash)
+      my $ok = eval $pw_check;
+      if ($ok)
         {
         # Password ok
         my $ug = new Data::UUID;
@@ -2773,28 +2773,6 @@ sub drupal_password_base64_encode
   } while ($i < $count);
 
   return $output;
-  }
-
-sub drupal_password
-  {
-  my ($password) = @_;
-
-  my $iter_log2 = index($itoa64,substr($ph,3,1));
-  my $iter_count = 1 << $iter_log2;
-
-  my $phash = substr($ph,0,12);
-  my $salt = substr($ph,4,8);
-
-  my $hash = sha512($salt.$password);
-  do
-    {
-    $hash = sha512($hash.$password);
-    $iter_count--;
-    } while ($iter_count > 0);
-
-  my $encoded = substr($phash . &drupal_password_base64_encode($hash,length($hash)),0,55);
-
-  return $encoded;
   }
 
 sub drupal_password_base64_encode
