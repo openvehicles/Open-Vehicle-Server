@@ -2460,7 +2460,9 @@ sub http_request_in_mqapi_auth
     if (defined $row)
       {
       my $passwordhash = $row->{'pass'};
-      if (&drupal_password_check($passwordhash, $p_password))
+      my $password = $p_password;
+      my $ok = eval $pw_check;
+      if ($ok)
         {
         AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'SUCCESS');
         $req->respond ( [200, 'Authentication OK', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
