@@ -74,7 +74,7 @@ $AnyEvent::Log::FILTER->level ($config->val('log','level','info'));
 # Vehicle Error Code Expansion configurations...
 my $vecem = Config::IniFiles->new();
 
-foreach (sort glob 'ovms_server*.vece')
+foreach (sort glob 'vece/*.vece')
   {
   my $vecef = $_;
   AE::log info => "- - - VECE loading $vecef";
