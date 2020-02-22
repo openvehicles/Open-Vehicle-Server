@@ -1,0 +1,5 @@
+# Server configuration
+v2/server/conf/ovms_server.conf
+
+# Local plugins
+v2/server/plugins/local/
