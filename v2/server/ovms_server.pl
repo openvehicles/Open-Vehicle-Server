@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+use strict;
+
 use EV;
 use AnyEvent;
 use AnyEvent::Handle;
@@ -37,7 +39,7 @@ my $VERSION = "2.6.5-20200220";
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my %conns;
-my $utilisations;
+my %utilisations;
 my %car_conns;
 my %app_conns;
 my %btc_conns;
@@ -397,6 +399,7 @@ sub io_line
     #
     # STANDARD PROTOCOL MESSAGE
     #
+    my $vrec = &db_get_vehicle($conns{$fn}{'vehicleid'});
     my $message = $conns{$fn}{'rxcipher'}->RC4(decode_base64($line));
     if ($message =~ /^MP-0\s(\S)(.*)/)
       {
@@ -722,7 +725,7 @@ if (-e 'ovms_server.pem')
 ########################################################
 # API HTTP server
 #
-my $http_server = AnyEvent::HTTPD->new (port => 6868, request_timeout => 30, allowed_methods => [GET,PUT,POST,DELETE]);
+my $http_server = AnyEvent::HTTPD->new (port => 6868, request_timeout => 30, allowed_methods => ['GET','PUT','POST','DELETE']);
 $http_server->reg_cb (
                 '/group' => \&http_request_in_group,
                 '/api' => \&http_request_in_api,
@@ -751,7 +754,7 @@ $http_server->reg_cb (
 my $https_server;
 if (-e 'ovms_server.pem')
   {
-  $https_server = AnyEvent::HTTPD->new (port => 6869, request_timeout => 30, ssl  => { cert_file => "ovms_server.pem" }, allowed_methods => [GET,PUT,POST,DELETE]);
+  $https_server = AnyEvent::HTTPD->new (port => 6869, request_timeout => 30, ssl  => { cert_file => "ovms_server.pem" }, allowed_methods => ['GET','PUT','POST','DELETE']);
   $https_server->reg_cb (
                    '/group' => \&http_request_in_group,
                    '/api' => \&http_request_in_api,
@@ -844,8 +847,8 @@ sub util_tim
   # Log current server connection counts
   my $concount = keys %conns;
   my $carcount = keys %car_conns;
-  my $appcount = subkeycnt %app_conns;
-  my $btccount = subkeycnt %btc_conns;
+  my $appcount = &subkeycnt(%app_conns);
+  my $btccount = &subkeycnt(%btc_conns);
   my $svrcount = keys %svr_conns;
   my $apicount = keys %api_conns;
   AE::log info => "- - - connection statistics: tcp_api=$concount, cars=$carcount, apps=$appcount, batchclients=$btccount, servers=$svrcount, http_api=$apicount";
@@ -1330,9 +1333,8 @@ sub svr_welcome
   {
   my ($hdl, $line) = @_;
 
-  AE::log info => "#$fn - - svr welcome $line";
-
   my $fn = $hdl->fh->fileno();
+  AE::log info => "#$fn - - svr welcome $line";
 
   my ($welcome,$crypt,$server_token,$server_digest) = split /\s+/,$line;
 
@@ -1703,7 +1705,7 @@ sub gcm_tim
     my $timestamp = $rec->{'timestamp'};
     my $pushkeyvalue = $rec->{'pushkeyvalue'};
     my $appid = $rec->{'appid'};
-    AE::log info => "#$fn - $vehicleid msg gcm '$alertmsg' => $pushkeyvalue";
+    AE::log info => "- - $vehicleid msg gcm '$alertmsg' => $pushkeyvalue";
     my $body = 'registration_id='.uri_escape($pushkeyvalue)
               .'&data.title='.uri_escape($vehicleid)
               .'&data.type='.uri_escape($alerttype)
@@ -1736,7 +1738,7 @@ sub mail_tim
     my $pushkeyvalue = $rec->{'pushkeyvalue'};
     if ($pushkeyvalue =~ /@/)
       {
-      AE::log info => "#$fn - $vehicleid msg mail '$alertmsg' => '$pushkeyvalue'";
+      AE::log info => "- - $vehicleid msg mail '$alertmsg' => '$pushkeyvalue'";
       my $message = Email::MIME->create(
         header_str => [
           From    => $mail_sender,
@@ -2024,11 +2026,11 @@ sub http_request_api_tpms
     $result{'fr_pressure'} = $fr_pressure;
     $result{'fr_temperature'} = $fr_temp;
     $result{'rr_pressure'} = $rr_pressure;
-    $result{'rr_temperature'} = $rr_temperature;
+    $result{'rr_temperature'} = $rr_temp;
     $result{'fl_pressure'} = $fl_pressure;
-    $result{'fl_temperature'} = $fl_temperature;
+    $result{'fl_temperature'} = $fl_temp;
     $result{'rl_pressure'} = $rl_pressure;
-    $result{'rl_temperature'} = $rl_temperature;
+    $result{'rl_temperature'} = $rl_temp;
     $result{'staletpms'} = $staletpms;
     }
 
@@ -2464,7 +2466,7 @@ sub http_request_in_mqapi_auth
       my $ok = eval $pw_check;
       if ($ok)
         {
-        AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'SUCCESS');
+        AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'SUCCESS');
         $req->respond ( [200, 'Authentication OK', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
         $httpd->stop_request;
         return;
@@ -2472,7 +2474,7 @@ sub http_request_in_mqapi_auth
       }
     }
 
-  AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'FAILED');
+  AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/auth',$p_username,'FAILED');
   $req->respond ( [403, 'Authentication FAILED', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
   $httpd->stop_request;
   }
@@ -2489,23 +2491,23 @@ sub http_request_in_mqapi_superuser
     return;
     }
 
+  my $p_username = $req->parm('username');
+
   if ((!defined $mqtt_superuser)||($mqtt_superuser eq ''))
     {
-    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'NOSUPERUSER');
+    AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'NOSUPERUSER');
     $req->respond ( [403, 'Not a superuser', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
     }
   else
     {
-    my $p_username = $req->parm('username');
-
     if ((defined $p_username)&&($p_username eq $mqtt_superuser))
       {
-      AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'SUPERUSER');
+      AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'SUPERUSER');
       $req->respond ( [200, 'Is a superuser', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
       }
     else
       {
-      AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'NORMALUSER');
+      AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/superuser',$p_username,'NORMALUSER');
       $req->respond ( [403, 'Not a superuser', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
       }
     }
@@ -2533,7 +2535,7 @@ sub http_request_in_mqapi_acl
   if ((defined $mqtt_superuser)&&($mqtt_superuser ne '')&&
       (defined $p_username)&&($p_username eq $mqtt_superuser))
     {
-    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic,'PERMIT');
+    AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic,'PERMIT');
     $req->respond ( [200, 'Superuser acl is permitted', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
     $httpd->stop_request;
     return;
@@ -2542,12 +2544,12 @@ sub http_request_in_mqapi_acl
   if ((defined $p_username)&&(defined $p_topic)&&
       (substr($p_topic,0,length($p_username)+6) eq 'ovms/'.$p_username.'/'))
     {
-    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic, 'PERMIT');
+    AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic, 'PERMIT');
     $req->respond ( [200, 'Access granted', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
     }
   else
     {
-    AE::log info => join(' ','http','-',$session,$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic, 'DENY');
+    AE::log info => join(' ','http','-','-',$req->client_host.':'.$req->client_port,'mqapi/acl',$p_username, $p_topic, 'DENY');
     $req->respond ( [403, 'Access denied', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, ''] );
     }
 
@@ -2754,7 +2756,7 @@ sub drupal_password_base64_encode
   my ($input, $count) = @_;
   my $output = '';
   my $i = 0;
-  do {
+  EL: do {
     my $value = ord(substr($input,$i++,1));
     $output .= substr($itoa64,$value & 0x3f,1);
     if ($i < $count) {
@@ -2762,42 +2764,14 @@ sub drupal_password_base64_encode
     }
     $output .= substr($itoa64,($value >> 6) & 0x3f,1);
     if ($i++ >= $count) {
-      break;
+      last EL;
     }
     if ($i < $count) {
       $value |= ord(substr($input,$i,1)) << 16;
     }
     $output .= substr($itoa64,($value >> 12) & 0x3f,1);
     if ($i++ >= $count) {
-      break;
-    }
-    $output .= substr($itoa64,($value >> 18) & 0x3f,1);
-  } while ($i < $count);
-
-  return $output;
-  }
-
-sub drupal_password_base64_encode
-  {
-  my ($input, $count) = @_;
-  my $output = '';
-  my $i = 0;
-  do {
-    my $value = ord(substr($input,$i++,1));
-    $output .= substr($itoa64,$value & 0x3f,1);
-    if ($i < $count) {
-      $value |= ord(substr($input,$i,1)) << 8;
-    }
-    $output .= substr($itoa64,($value >> 6) & 0x3f,1);
-    if ($i++ >= $count) {
-      break;
-    }
-    if ($i < $count) {
-      $value |= ord(substr($input,$i,1)) << 16;
-    }
-    $output .= substr($itoa64,($value >> 12) & 0x3f,1);
-    if ($i++ >= $count) {
-      break;
+      last EL;
     }
     $output .= substr($itoa64,($value >> 18) & 0x3f,1);
   } while ($i < $count);
