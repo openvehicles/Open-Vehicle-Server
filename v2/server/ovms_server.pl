@@ -70,7 +70,7 @@ select STDERR; $|=1;
 select STDOUT; $|=1;
 
 # Configuration
-$config = Config::IniFiles->new(-file => 'ovms_server.conf');
+$config = Config::IniFiles->new(-file => 'conf/ovms_server.conf');
 
 # Logging
 $AnyEvent::Log::FILTER->level ($config->val('log','level','info'));
