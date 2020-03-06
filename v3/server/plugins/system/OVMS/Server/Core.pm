@@ -21,7 +21,12 @@ use Exporter qw(import);
 
 our @EXPORT = qw(MyConfig IsPermitted UTCDate UTCDateFull UTCTime GetVersion);
 
-my $VERSION = '3.0.0-20200223';
+my $VERSION;
+if (-e '/usr/bin/git')
+  { $VERSION = `/usr/bin/git describe --always --tags --dirty`; }
+else
+  { $VERSION = '3.0.0-custom'; }
+
 my $me;                         # Reference to our singleton object
 
 use vars qw{
