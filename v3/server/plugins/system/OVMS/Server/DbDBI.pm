@@ -211,8 +211,8 @@ sub DbGetVehicle
     my $sth = $db->prepare('SELECT *,TIME_TO_SEC(TIMEDIFF(UTC_TIMESTAMP(),v_lastupdate)) as v_lastupdatesecs '
                          . 'FROM ovms_cars WHERE vehicleid=? AND deleted="0"');
     $sth->execute($vehicleid);
-    $row = $sth->fetchrow_hashref() if ($sth->rows() == 1);
-    $row->{'owner'} = DbOwnerNameByID($row->{'owner'});
+    $row = $sth->fetchrow_hashref();
+    $row->{'owner'} = DbOwnerNameByID($row->{'owner'}) if (defined $row);
     }
   else
     {
@@ -220,7 +220,7 @@ sub DbGetVehicle
                          . 'FROM ovms_cars WHERE owner=? AND vehicleid=? AND deleted="0"');
     $sth->execute(DBOwnerIDByName($ownername), $vehicleid);
     $row = $sth->fetchrow_hashref();
-    $row->{'owner'} = $ownername;
+    $row->{'owner'} = $ownername if (defined $row);
     }
 
   return $row;
