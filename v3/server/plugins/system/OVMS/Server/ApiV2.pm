@@ -1047,7 +1047,14 @@ sub io_message
       return;
       }
     my ($h_recordtype,$h_recordnumber,$h_lifetime,$h_data) = split /,/,$data,4;
-    FunctionCall('DbSaveHistorical',UTCTime(),$h_recordtype,$h_recordnumber,$owner,$vehicleid,$h_data,UTCTime(time+$h_lifetime));
+    if (!defined $h_data)
+      {
+      AE::log error => "#$fn $clienttype $vkey msg invalid 'H' message ignored";
+      }
+    else
+      {
+      FunctionCall('DbSaveHistorical',UTCTime(),$h_recordtype,$h_recordnumber,$owner,$vehicleid,$h_data,UTCTime(time+$h_lifetime));
+      }
     return;
     }
   elsif ($m_code eq 'h')
@@ -1058,7 +1065,14 @@ sub io_message
       return;
       }
     my ($h_ackcode,$h_timediff,$h_recordtype,$h_recordnumber,$h_lifetime,$h_data) = split /,/,$data,6;
-    FunctionCall('DbSaveHistorical',UTCTime(time+$h_timediff),$h_recordtype,$h_recordnumber,$owner,$vehicleid,$h_data,UTCTime(time+($h_lifetime-$h_timediff)));
+    if (!defined $h_data)
+      {
+      AE::log error => "#$fn $clienttype $vkey msg invalid 'h' message ignored";
+      }
+    else
+      {
+      FunctionCall('DbSaveHistorical',UTCTime(time+$h_timediff),$h_recordtype,$h_recordnumber,$owner,$vehicleid,$h_data,UTCTime(time+($h_lifetime-$h_timediff)));
+      }
     &io_tx($fn, $conns{$fn}{'handle'}, 'h', $h_ackcode);
     return;
     }
