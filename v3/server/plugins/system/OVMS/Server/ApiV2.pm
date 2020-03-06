@@ -1087,7 +1087,7 @@ sub io_message
       }
     # Let's store the data in the database...
     my $ptoken = $conns{$fn}{'ptoken'}; $ptoken="" if (!defined $ptoken);
-    FunctionCall('dbSaveCarMessage', $owner, $vehicleid, $m_code, 1, UTCTime(), $m_paranoid, $ptoken, $m_data);
+    FunctionCall('DbSaveCarMessage', $owner, $vehicleid, $m_code, 1, UTCTime(), $m_paranoid, $ptoken, $m_data);
     if ($loghistory_tim > 0)
       {
       FunctionCall('DbSaveHistorical',UTCTime(),$m_code,0,$owner,$vehicleid,$m_data,UTCTime(time+$loghistory_tim));

@@ -25,6 +25,8 @@ our @EXPORT = qw();
 
 my $itoa64 = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 my $me; # Reference to our singleton object
+my $drupaltim;
+my $drupal_interval;
 
 use vars qw{
   $config
@@ -41,6 +43,9 @@ sub new
   $self->init();
 
   RegisterFunction('Authenticate',\&Authenticate);
+
+  $drupal_interval = MyConfig()->val('drupal','interval',60);
+  $drupaltim = AnyEvent->timer (after => $drupal_interval, interval => $drupal_interval, cb => \&drupal_tim);
 
   return $self;
   }
@@ -79,7 +84,7 @@ sub Authenticate
   if ($encoded eq $dbpass)
     {
     # Full permissions for a user+pass authentication
-    AE::log debug => 'Authentication via drupal username+password';
+    AE::log debug => '- - - Authentication via drupal username+password';
     return '*';
     }
 
@@ -87,7 +92,7 @@ sub Authenticate
   $rec = FunctionCall('DbGetToken',$user,$password);
   if (defined $rec)
     {
-    AE::log debug => 'Authentication via drupal username+apitoken';
+    AE::log debug => '- - - Authentication via drupal username+apitoken';
     return $rec->{'permit'};
     }
 
@@ -125,6 +130,25 @@ sub drupal_password_base64_encode
     } while ($i < $count);
 
   return $output;
+  }
+
+sub drupal_tim
+  {
+  # Periodic drupal maintenance
+
+  AE::log info => '- - - Periodic Drupal maintenance';
+
+  FunctionCall('DbDoSQL',
+    'INSERT INTO ovms_owners SELECT uid,name,mail,pass,status,0,utc_timestamp() FROM users '
+  . 'WHERE users.uid NOT IN (SELECT owner FROM ovms_owners)');
+
+  FunctionCall('DbDoSQL',
+    'UPDATE ovms_owners LEFT JOIN users ON users.uid=ovms_owners.owner '
+  . 'SET ovms_owners.pass=users.pass, ovms_owners.status=users.status, ovms_owners.name=users.name, ovms_owners.mail=users.mail, deleted=0, changed=UTC_TIMESTAMP() '
+  . 'WHERE users.pass<>ovms_owners.pass OR users.status<>ovms_owners.status OR users.name<>ovms_owners.name OR users.mail<>ovms_owners.mail');
+
+  FunctionCall('DbDoSQL',
+    'UPDATE ovms_owners SET deleted=1,changed=UTC_TIMESTAMP() WHERE deleted=0 AND owner NOT IN (SELECT uid FROM users)');
   }
 
 1;

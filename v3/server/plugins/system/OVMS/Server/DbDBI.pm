@@ -50,6 +50,7 @@ sub new
   $db->{mysql_auto_reconnect} = 1;
   $db_tim = AnyEvent->timer (after => 60, interval => 60, cb => \&_db_housekeep);
 
+  RegisterFunction('DbDoSQL',\&DbDoSQL);
   RegisterFunction('DbUtilisation',\&DbUtilisation);
   RegisterFunction('DbHasVehicle',\&DbHasVehicle);
   RegisterFunction('DbGetVehicle',\&DbGetVehicle);
@@ -65,7 +66,7 @@ sub new
   RegisterFunction('DbSaveHistoricalNumeric',\&DbSaveHistoricalNumeric);
   RegisterFunction('DbRegisterPushNotify',\&DbRegisterPushNotify);
   RegisterFunction('DbInvalidateParanoidMessages',\&DbInvalidateParanoidMessages);
-  RegisterFunction('dbSaveCarMessage',\&dbSaveCarMessage);
+  RegisterFunction('DbSaveCarMessage',\&DbSaveCarMessage);
   RegisterFunction('DbGetToken',\&DbGetToken);
   RegisterFunction('DbGetOwnerTokens',\&DbGetOwnerTokens);
   RegisterFunction('DbSaveToken',\&DbSaveToken);
@@ -170,6 +171,13 @@ sub dbClearOwnerCaches
   {
   %cache_ownernamebyid = ();
   %cache_owneridbyname = ();
+  }
+
+sub DbDoSQL
+  {
+  my ($sql) = @_;
+
+  $db->do($sql);
   }
 
 sub DbUtilisation
@@ -417,7 +425,7 @@ sub DbInvalidateParanoidMessages
           $paranoidtoken,DBOwnerIDByName($ownername),$vehicleid);
   }
 
-sub dbSaveCarMessage
+sub DbSaveCarMessage
   {
   my ($ownername, $vehicleid, $code, $valid, $timestamp, $paranoid, $ptoken, $msg) = @_;
 
