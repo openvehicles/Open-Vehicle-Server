@@ -6,6 +6,8 @@ use Carp;
 
 use EV;
 use AnyEvent;
+use AnyEvent::IO;
+use AnyEvent::Socket;
 use AnyEvent::Log;
 use AnyEvent::Debug;
 use Digest::MD5;
