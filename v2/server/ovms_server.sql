@@ -16,6 +16,27 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `ovms_apitokens`
+--
+
+DROP TABLE IF EXISTS `ovms_apitokens`;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8;
+CREATE TABLE `ovms_apitokens` (
+  `owner` int(10) unsigned NOT NULL,
+  `token` varchar(64) NOT NULL,
+  `vehicleid` varchar(32) NOT NULL default '',
+  `application` varchar(32) NOT NULL DEFAULT '',
+  `purpose` varchar(80) NOT NULL DEFAULT '',
+  `created` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `refreshed` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `lastused` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  PRIMARY KEY (`owner`,`vehicleid`,`token`),
+  KEY `token` (`token`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COMMENT="OVMS: API tokens";
+SET character_set_client = @saved_cs_client;
+
+--
 -- Table structure for table `ovms_autoprovision`
 --
 
@@ -43,6 +64,7 @@ DROP TABLE IF EXISTS `ovms_carmessages`;
 SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = utf8;
 CREATE TABLE `ovms_carmessages` (
+  `owner` int(10) unsigned NOT NULL default '0',
   `vehicleid` varchar(32) NOT NULL default '' COMMENT 'Unique vehicle ID',
   `m_code` char(1) NOT NULL default '',
   `m_valid` tinyint(1) NOT NULL default '1',
@@ -50,7 +72,7 @@ CREATE TABLE `ovms_carmessages` (
   `m_paranoid` tinyint(1) NOT NULL default '0',
   `m_ptoken` varchar(32) NOT NULL default '',
   `m_msg` varchar(255) NOT NULL default '',
-  PRIMARY KEY  (`vehicleid`,`m_code`)
+  PRIMARY KEY  (`owner`,`vehicleid`,`m_code`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COMMENT='OVMS: Stores vehicle messages';
 SET character_set_client = @saved_cs_client;
 

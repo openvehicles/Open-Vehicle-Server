@@ -11,6 +11,8 @@ use MIME::Base64;
 use IO::Socket::INET;
 use Math::Trig qw(deg2rad pi great_circle_distance asin acos);
 
+select STDOUT; $|=1;
+
 my $b64tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 my $shared_secret = "DEMO";
@@ -23,6 +25,8 @@ print STDERR "Shared Secret is: ",$shared_secret,"\n";
 my $sock = IO::Socket::INET->new(PeerAddr => '127.0.0.1',
                                  PeerPort => '6867',
                                  Proto    => 'tcp');
+
+die "Connection error: $!" if (!defined $sock);
 
 #####
 ##### CLIENT
@@ -357,6 +361,7 @@ sub statmsg
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 D$cb,$doors2,$lockunlock,$pem,$motor,$battery,$trip,$odometer,50,0,$ambiant,0,1,1,12.0,0"),"")."\r\n");
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 W29,$front,40,$back,29,$front,40,$back,1"),"")."\r\n");
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 gDEMOCARS,$soc,$speed,90,0,1,120,$lat,$lon"),'')."\r\n");
+#  $handle->push_write(encode_base64($txcipher->RC4("MP-0 PIHello demo world"),'')."\r\n");
   }
 
 sub getambiant

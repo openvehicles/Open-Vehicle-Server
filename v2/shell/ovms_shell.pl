@@ -256,7 +256,7 @@ sub command
           $first=1;
           printf "%-32.32s %-32.32s %-19.19s %s\n",'VehicleID','Owner Name','Last Connected','Owner eMail';
           }
-        printf "%-32.32s %-32.32s %-19.19s %s\n",$row->{'vehicleid'},$row->{'name'},$row->{'m_msgtime'},$row->{'mail'};
+        printf "%-32.32s %-32.32s %-19.19s %s\n",$row->{'owner'}.'/'.$row->{'vehicleid'},$row->{'name'},$row->{'m_msgtime'},$row->{'mail'};
         }
       }
     }
