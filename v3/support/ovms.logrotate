@@ -1,0 +1,11 @@
+/var/log/ovms_server.log
+/var/log/ovms_democar.log
+{
+    compress
+    copytruncate
+    daily
+    dateext
+    dateyesterday
+    maxage 90
+    missingok
+}
