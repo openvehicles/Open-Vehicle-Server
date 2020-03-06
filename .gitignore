@@ -1,10 +1,10 @@
 # Server configuration
-v2/server/conf/ovms_server.conf
-v2/server/conf/*.pem
+v3/server/conf/ovms_server.conf
+v3/server/conf/*.pem
 
 # Shell configuration
-v2/shell/ovms_shell.conf
+v3/shell/ovms_shell.conf
 
 # Local plugins
-v2/server/plugins/local/
-v2/server/httpfiles/
+v3/server/plugins/local/
+v3/server/httpfiles/
