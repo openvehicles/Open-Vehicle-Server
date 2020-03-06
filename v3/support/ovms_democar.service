@@ -1,0 +1,13 @@
+[Unit]
+Description=OVMS DEMO car
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/openvehicles/v3/v3/demos
+ExecStart=/bin/sh -c 'exec ./ovms_democar.pl >>/var/log/ovms_democar.log 2>&1'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
