@@ -48,6 +48,8 @@ my $timeout_app;               # Seconds after which to timeout App connections
 my $timeout_car;               # Seconds after which to timeout Car connections
 my $timeout_api;               # Seconds after which to timeout Api connections
 my $loghistory_tim;            # Time (in seconds) to retain log history for
+my $server_guard1;             # Guard object for plaintext server
+my $server_guard2;             # Guard object for SSL server
 
 use vars qw{
   };
@@ -77,7 +79,7 @@ sub new
 sub start
   {
   AE::log info => "- - - starting V2 server listener on port tcp/6867";
-  tcp_server undef, 6867, sub
+  $server_guard1 = tcp_server undef, 6867, sub
     {
     my ($fh, $host, $port) = @_;
     my $key = "$host:$port";
@@ -103,7 +105,7 @@ sub start
   if (-e $pemfile)
     {
     AE::log info => "- - - starting V2 SSL server listener on port tcp/6870";
-    tcp_server undef, 6870, sub
+    $server_guard2 = tcp_server undef, 6870, sub
       {
       my ($fh, $host, $port) = @_;
       my $key = "$host:$port";
