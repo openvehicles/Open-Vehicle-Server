@@ -15,6 +15,7 @@ use Carp;
 use AnyEvent;
 use AnyEvent::Log;
 use Digest::SHA qw(sha256 sha512);
+use OVMS::Server::Core;
 use OVMS::Server::Plugin;
 
 use Exporter qw(import);
