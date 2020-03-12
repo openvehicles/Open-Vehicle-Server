@@ -64,7 +64,7 @@ sub PushNotify
   if ($alerttype eq 'E')
     {
     my ($vehicletype,$errorcode,$errordata) = split(/,/,$alertmsg);
-    if (PluginLoaded{'VECE'})
+    if (PluginLoaded('VECE'))
       {
       # VECE plugin is available
       $alertmsg = PluginCall('VECE','expansion',$vehicletype,$errorcode,$errordata);
