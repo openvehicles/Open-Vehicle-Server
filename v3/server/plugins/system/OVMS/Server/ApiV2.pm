@@ -1092,7 +1092,7 @@ sub io_message
       # Let's follow up with server version...
       ClientsTransmit($owner, $vehicleid, 'v2', 'f', GetVersion());
       }
-    ClientsTransmit($owner, $vehicleid, 'v2', 't', 0);
+    ClientsTransmit($owner, $vehicleid, 'v2', 'T', 0);
     }
   elsif ($clienttype eq 'A')
     {
