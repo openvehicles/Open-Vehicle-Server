@@ -224,7 +224,7 @@ sub io_timeout_handle
     if (($lastrx+$timeout_app)<$now)
       {
       # The APP has been unresponsive for timeout_app seconds - time to disconnect it
-      &io_terminate($fn, $$owner, $vehicleid, "timeout due app due to inactivity");
+      &io_terminate($fn, $owner, $vehicleid, "timeout due app due to inactivity");
       return;
       }
     }
