@@ -37,10 +37,6 @@ use constant TCP_KEEPCNT => 6;
 my $b64tab = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 my $me; # Reference to our singleton object
-my %conns;                     # Connection informaton (keyed by fd#)
-my %car_conns;                 # Car connections (vkey -> fd#)
-my %app_conns;                 # App connections (vkey{$fd#})
-my %btc_conns;                 # Batch connections (vkey{$fd#})
 my %group_msgs;                # Current group messages (index by groupid, vkey)
 my %group_subs;                # Current group subscriptions (index by groupid)
 my %authfail_notified;         # Authentication failure notified (keyed by vkey)
@@ -68,9 +64,6 @@ sub new
   $timeout_api       = MyConfig()->val('server','timeout_api',60*2);
   $loghistory_tim    = MyConfig()->val('log','history',0);
 
-  RegisterFunction('CarConnectionCount', \&car_connection_count);
-  RegisterFunction('AppConnectionCount', \&app_connection_count);
-  RegisterFunction('BtcConnectionCount', \&btc_connection_count);
   RegisterEvent('StartRun', \&start);
 
   return $self;
@@ -86,19 +79,28 @@ sub start
     $fh->blocking(0);
     my $fn = $fh->fileno();
     AE::log info => "#$fn - - new connection from $host:$port";
-    my $handle; $handle = new AnyEvent::Handle(fh => $fh, on_error => \&io_error, on_rtimeout => \&io_timeout, keepalive => 1, no_delay => 1, rtimeout => 30);
-    $handle->push_read (line => \&io_line_welcome);
+    my $handle; $handle = new AnyEvent::Handle(
+      fh => $fh,
+      on_error => \&io_error_handle,
+      on_rtimeout => \&io_timeout_handle,
+      keepalive => 1,
+      no_delay => 1,
+      rtimeout => 30);
+    $handle->push_read (line => \&io_handle_welcome);
 
     setsockopt($fh, SOL_SOCKET, SO_KEEPALIVE, 1);
     setsockopt($fh, SOL_TCP, TCP_KEEPCNT, 9);
     setsockopt($fh, SOL_TCP, TCP_KEEPIDLE, 240);
     setsockopt($fh, SOL_TCP, TCP_KEEPINTVL, 240);
 
-    $conns{$fn}{'fh'} = $fh;
-    $conns{$fn}{'handle'} = $handle;
-    $conns{$fn}{'host'} = $host;
-    $conns{$fn}{'port'} = $port;
-    $conns{$fn}{'proto'} = 'v2/6867';
+    ConnStart($fn,(
+      'fh' => $fh,
+      'handle' => $handle,
+      'host' => $host,
+      'port' => $port,
+      'callback_tx' => \&callback_io_tx_handle,
+      'callback_shutdown' => \&callback_io_shutdown_handle,
+      'proto' => 'v2/6867'));
     };
 
   my $pemfile = MyConfig()->val('v2','sslcrt','conf/ovms_server.pem');
@@ -116,23 +118,26 @@ sub start
         fh => $fh,
         tls      => "accept",
         tls_ctx  => { cert_file => $pemfile },
-        on_error => \&io_error,
-        on_rtimeout => \&io_timeout,
+        on_error => \&io_error_handle,
+        on_rtimeout => \&io_timeout_handle,
         keepalive => 1,
         no_delay => 1,
         rtimeout => 30);
-      $handle->push_read (line => \&io_line_welcome);
+      $handle->push_read (line => \&io_handle_welcome);
 
       setsockopt($fh, SOL_SOCKET, SO_KEEPALIVE, 1);
       setsockopt($fh, SOL_TCP, TCP_KEEPCNT, 9);
       setsockopt($fh, SOL_TCP, TCP_KEEPIDLE, 240);
       setsockopt($fh, SOL_TCP, TCP_KEEPINTVL, 240);
 
-      $conns{$fn}{'fh'} = $fh;
-      $conns{$fn}{'handle'} = $handle;
-      $conns{$fn}{'host'} = $host;
-      $conns{$fn}{'port'} = $port;
-      $conns{$fn}{'proto'} = 'v2/6870/ssl';
+      ConnStart($fn,(
+        'fh' => $fh,
+        'handle' => $handle,
+        'host' => $host,
+        'port' => $port,
+        'callback_tx' => \&callback_io_tx_handle,
+        'callback_shutdown' => \&callback_io_shutdown_handle,
+        'proto' => 'v2/6870/tls'));
       };
     };
   }
@@ -173,57 +178,30 @@ sub log
   $loghistory_rec=0 if ($loghistory_rec>65535);
   }
 
-sub car_connection_count
-  {
-  my ($owner, $vehicleid) = @_;
-
-  my $vkey = $owner . '/' . $vehicleid;
-
-  return (defined $car_conns{$vkey})?1:0;
-  }
-
-sub app_connection_count
-  {
-  my ($owner, $vehicleid) = @_;
-
-  my $vkey = $owner . '/' . $vehicleid;
-
-  return ((defined $app_conns{$vkey})&&(scalar keys %{$app_conns{$vkey}}));
-  }
-
-sub btc_connection_count
-  {
-  my ($owner, $vehicleid) = @_;
-
-  my $vkey = $owner . '/' . $vehicleid;
-
-  return ((defined $btc_conns{$vkey})&&(scalar keys %{$btc_conns{$vkey}}));
-  }
-
-sub io_error
+sub io_error_handle
   {
   my ($hdl, $fatal, $msg) = @_;
 
   my $fn = $hdl->fh->fileno();
-  my $vehicleid = $conns{$fn}{'vehicleid'}; $vehicleid='-' if (!defined $vehicleid);
-  my $owner = $conns{$fn}{'owner'}; $owner='-' if (!defined $owner);
-  my $clienttype = $conns{$fn}{'clienttype'}; $clienttype='-' if (!defined $clienttype);
+  my $vehicleid = ConnGetAttribute($fn,'vehicleid'); $vehicleid='-' if (!defined $vehicleid);
+  my $owner = ConnGetAttribute($fn,'owner'); $owner='-' if (!defined $owner);
+  my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
 
   if ($msg =~ /^(Broken pipe|Connection reset by peer)$/)
-    { &io_terminate($fn, $hdl, $owner, $vehicleid, "disconnected"); }
+    { &io_terminate($fn, $owner, $vehicleid, "disconnected"); }
   else
-    { &io_terminate($fn, $hdl, $owner, $vehicleid, "got error: $msg"); }
+    { &io_terminate($fn, $owner, $vehicleid, "got error: $msg"); }
   }
 
-sub io_timeout
+sub io_timeout_handle
   {
   my ($hdl) = @_;
 
   my $fn = $hdl->fh->fileno();
-  my $vehicleid = $conns{$fn}{'vehicleid'}; $vehicleid='-' if (!defined $vehicleid);
-  my $owner = $conns{$fn}{'owner'};
+  my $vehicleid = ConnGetAttribute($fn,'vehicleid'); $vehicleid='-' if (!defined $vehicleid);
+  my $owner = ConnGetAttribute($fn,'owner');
   my $vkey = $owner . '/' . $vehicleid;
-  my $clienttype = $conns{$fn}{'clienttype'}; $clienttype='-' if (!defined $clienttype);
+  my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
 
   # We've got an N second receive data timeout
 
@@ -232,21 +210,21 @@ sub io_timeout
     {
     # OK, it has been 60 seconds since the client connected, but still no identification
     # Time to shut it down...
-    &io_terminate($fn, $hdl, $owner, $vehicleid, "timeout due to no initial welcome exchange");
+    &io_terminate($fn, $owner, $vehicleid, "timeout due to no initial welcome exchange");
     return;
     }
 
   # At this point, it is either a car or an app - let's handle the timeout
   my $now = AnyEvent->now;
-  my $lastrx = $conns{$fn}{'lastrx'};
-  my $lasttx = $conns{$fn}{'lasttx'};
-  my $lastping = $conns{$fn}{'lastping'};
+  my $lastrx =ConnGetAttribute($fn,'lastrx');
+  my $lasttx = ConnGetAttribute($fn,'lasttx');
+  my $lastping = ConnGetAttribute($fn,'lastping');
   if ($clienttype eq 'A')
     {
     if (($lastrx+$timeout_app)<$now)
       {
       # The APP has been unresponsive for timeout_app seconds - time to disconnect it
-      &io_terminate($fn, $hdl, $$owner, $vehicleid, "timeout due app due to inactivity");
+      &io_terminate($fn, $$owner, $vehicleid, "timeout due app due to inactivity");
       return;
       }
     }
@@ -256,7 +234,7 @@ sub io_timeout
     if (($lastrx+$timeout_api)<$now)
       {
       # The BATCHCLIENT has been unresponsive for timeout_api seconds - time to disconnect it
-      &io_terminate($fn, $hdl, $owner, $vehicleid, "timeout btc due to inactivity");
+      &io_terminate($fn, $owner, $vehicleid, "timeout btc due to inactivity");
       return;
       }
     }
@@ -265,29 +243,35 @@ sub io_timeout
     if (($lastrx+$timeout_car)<$now)
       {
       # The CAR has been unresponsive for timeout_car seconds - time to disconnect it
-      &io_terminate($fn, $hdl, $owner, $vehicleid, "timeout car due to inactivity");
+      &io_terminate($fn, $owner, $vehicleid, "timeout car due to inactivity");
       return;
       }
     if ( (($lasttx+$timeout_car-60)<$now) && (($lastping+300)<$now) )
       {
       # We haven't sent anything to the CAR for timeout_car-60 seconds - time to ping it
       AE::log info => "#$fn $clienttype $vkey ping car due to inactivity";
-      &io_tx($fn, $conns{$fn}{'handle'}, 'A', 'FA');
-      $conns{$fn}{'lastping'} = $now;
+      ConnTransmit($fn, 'v2', 'A', 'FA');
+      ConnSetAttribute($fn,'lastping',$now);
       }
     }
   }
 
-sub io_line_welcome
+sub io_handle_welcome
   {
   my ($hdl, $line) = @_;
 
   my $fn = $hdl->fh->fileno();
+  $hdl->push_read(line => \&io_line);
+  &welcome($fn, $line);
+  }
+
+sub welcome
+  {
+  my ($fn, $line) = @_;
 
   AE::log debug => "#$fn - - rx welcome $line";
 
-  $hdl->push_read(line => \&io_line);
-  $conns{$fn}{'lastrx'} = time;
+  ConnSetAttribute($fn,'lastrx',time);
 
   if ($line =~ /^MP-(\S)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(\s+(.+))?/)
     {
@@ -296,18 +280,18 @@ sub io_line_welcome
     #
     if ($2 eq '0')
       {
-      $conns{$fn}{'protscheme'} = $2;
-      &io_line_welcome_30($fn,$hdl,$line,$1,$3,$4,uc($5),$7);
+      ConnSetAttribute($fn,'protscheme',$2);
+      &welcome_30($fn,$line,$1,$3,$4,uc($5),$7);
       }
     elsif ($2 eq '1')
       {
-      $conns{$fn}{'protscheme'} = $2;
-      &io_line_welcome_31($fn,$hdl,$line,$1,$3,$4,uc($5),$7);
+      ConnSetAttribute($fn,'protscheme',$2);
+      &welcome_31($fn,$line,$1,$3,$4,uc($5),$7);
       }
     else
       {
-      $hdl->destroy;
-      delete $conns{$fn};
+      ConnShutdown($fn);
+      ConnFinish($fn);
       AE::log debug => "#$fn - - unsupported protection scheme '$2' - aborting connection";
       return;
       }
@@ -319,21 +303,21 @@ sub io_line_welcome
     #
     if ($1 eq '0')
       {
-      $conns{$fn}{'protscheme'} = $1;
-      &io_line_ap_30($fn,$hdl,$line,$2);
+      ConnSetAttribute($fn,'protscheme',$1);
+      &ap_30($fn,$line,$2);
       }
     else
       {
-      $hdl->destroy;
-      delete $conns{$fn};
+      ConnShutdown($fn);
+      ConnFinish($fn);
       AE::log debug => "#$fn - - unsupported protection scheme '$2' - aborting connection";
       return;
       }
     }
   else
     {
-    $hdl->destroy;
-    delete $conns{$fn};
+    ConnShutdown($fn);
+    ConnFinish($fn);
     AE::log debug => "#$fn - - error - unrecognised message from vehicle";
     return;
     }
@@ -344,50 +328,58 @@ sub io_line
   my ($hdl, $line) = @_;
 
   my $fn = $hdl->fh->fileno();
-  my $vehicleid = $conns{$fn}{'vehicleid'}; $vehicleid='-' if (!defined $vehicleid);
-  my $owner = $conns{$fn}{'owner'}; $owner=0 if (!defined $owner);
+  &line($fn, $line);
+  $hdl->push_read(line => \&io_line);
+  }
+
+sub line
+  {
+  my ($fn, $line) = @_;
+
+  my $vehicleid = ConnGetAttribute($fn,'vehicleid'); $vehicleid='-' if (!defined $vehicleid);
+  my $owner = ConnGetAttribute($fn,'owner'); $owner=0 if (!defined $owner);
   my $vkey = $owner . '/' . $vehicleid;
-  my $clienttype = $conns{$fn}{'clienttype'}; $clienttype='-' if (!defined $clienttype);
+  my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
   FunctionCall('DbUtilisation',$owner,$vehicleid,$clienttype,length($line)+2,0);
   AE::log debug => "#$fn $clienttype $vkey rx enc $line";
-  $hdl->push_read(line => \&io_line);
-  $conns{$fn}{'lastrx'} = time;
+  ConnSetAttribute($fn,'lastrx',time);
 
-  return if (!defined $conns{$fn}{'vehicleid'});
+  return if (!ConnHasAttribute($fn,'vehicleid'));
 
   my $message;
-  if ($conns{$fn}{'protscheme'} eq '0')
+  if (ConnGetAttribute($fn,'protscheme') eq '0')
     {
-    $message = $conns{$fn}{'rxcipher'}->RC4(decode_base64($line));
+    my $rxc = ConnGetAttributeRef($fn,'rxcipher');
+    $message = $$rxc->RC4(decode_base64($line));
     }
 
   #
   # STANDARD PROTOCOL MESSAGE
   #
 
-  my $vrec = &FunctionCall('DbGetVehicle',$conns{$fn}{'owner'},$conns{$fn}{'vehicleid'});
+  my $vrec = &FunctionCall('DbGetVehicle',ConnGetAttribute($fn,'owner'),ConnGetAttribute($fn,'vehicleid'));
   if ($message =~ /^MP-0\s(\S)(.*)/)
     {
     my ($code,$data) = ($1,$2);
     &log($fn, $clienttype, $owner, $vehicleid, "rx msg $code $data");
-    &io_message($fn, $hdl, $owner, $conns{$fn}{'vehicleid'}, $vrec, $code, $data);
+    &io_message($fn, $owner, ConnGetAttribute($fn,'vehicleid'), $vrec, $code, $data);
     }
   else
     {
-    &io_terminate($fn, $hdl, $owner, $vehicleid, "error - Unable to decode message - aborting connection");
+    &io_terminate($fn, $owner, $vehicleid, "error - Unable to decode message - aborting connection");
     return;
     }
   }
 
-sub io_line_welcome_30
+sub welcome_30
   {
-  my ($fn,$hdl,$line,$clienttype,$clienttoken,$clientdigest,$vehicleid,$rest) = @_;
+  my ($fn,$line,$clienttype,$clienttoken,$clientdigest,$vehicleid,$rest) = @_;
 
   my $vrec = &FunctionCall('DbGetVehicle',undef,$vehicleid);
   if (!defined $vrec)
     {
-    $hdl->destroy;
-    delete $conns{$fn};
+    ConnShutdown($fn);
+    ConnFinish($fn);
     AE::log debug => "#$fn - $vehicleid error - Unknown vehicle - aborting connection";
     return;
     }
@@ -395,7 +387,7 @@ sub io_line_welcome_30
   # At this point we don't know the owner, so calculate it from the looked up vehicle record
   my $owner = $vrec->{'owner'};
   my $vkey = $owner . '/' . $vehicleid;
-  $conns{$fn}{'owner'} = $owner;
+  ConnSetAttribute($fn,'owner',$owner);
 
   # Authenticate the client
   my $dclientdigest = decode_base64($clientdigest);
@@ -406,10 +398,10 @@ sub io_line_welcome_30
     if (($clienttype eq 'C')&&(!defined $authfail_notified{$vkey}))
       {
       $authfail_notified{$vkey}=1;
-      my $host = $conns{$fn}{'host'};
+      my $host = ConnGetAttribute($fn,'host');
       FunctionCall('PushNotify', $owner, $vehicleid, 'A', "Vehicle authentication failed ($host)");
       }
-    &io_terminate($fn,$hdl,$owner,$vehicleid, "error - Incorrect client authentication - aborting connection");
+    &io_terminate($fn,$owner,$vehicleid, "error - Incorrect client authentication - aborting connection");
     return;
     }
   else
@@ -417,7 +409,7 @@ sub io_line_welcome_30
     if (($clienttype eq 'C')&&(defined $authfail_notified{$vkey}))
       {
       delete $authfail_notified{$vkey};
-      my $host = $conns{$fn}{'host'};
+      my $host = ConnGetAttribute($fn,'host');
       FunctionCall('PushNotify', $owner, $vehicleid, 'A', "Vehicle authentication successful ($host)");
       }
     }
@@ -425,7 +417,7 @@ sub io_line_welcome_30
   # Check server permissions
   if (($clienttype eq 'S')&&($vrec->{'v_type'} ne 'SERVER'))
     {
-    &io_terminate($fn,$hdl,$owner,$vehicleid, "error - Can't authenticate a car as a server - aborting connection");
+    &io_terminate($fn,$owner,$vehicleid, "error - Can't authenticate a car as a server - aborting connection");
     return;
     }
 
@@ -449,76 +441,77 @@ sub io_line_welcome_30
   $rxcipher->RC4(chr(0) x 1024);  # Prime with 1KB of zeros
 
   # Store these for later use...
-  $conns{$fn}{'serverkey'} = $serverkey;
-  $conns{$fn}{'serverdigest'} = $serverdigest;
-  $conns{$fn}{'servertoken'} = $servertoken;
-  $conns{$fn}{'clientdigest'} = $clientdigest;
-  $conns{$fn}{'clienttoken'} = $clienttoken;
-  $conns{$fn}{'vehicleid'} = $vehicleid;
-  $conns{$fn}{'owner'} = $owner;
-  $conns{$fn}{'vkey'} = $owner . '/' . $vehicleid;
-  $conns{$fn}{'txcipher'} = $txcipher;
-  $conns{$fn}{'rxcipher'} = $rxcipher;
-  $conns{$fn}{'clienttype'} = $clienttype;
-  $conns{$fn}{'lastping'} = time;
-  $conns{$fn}{'permissions'} = '*';
+  ConnSetAttributes($fn,
+    ( 'serverkey' => $serverkey,
+      'serverdigest' => $serverdigest,
+      'servertoken' => $servertoken,
+      'clientdigest' => $clientdigest,
+      'clienttoken' => $clienttoken,
+      'vehicleid' => $vehicleid,
+      'owner' => $owner,
+      'vkey' => $owner . '/' . $vehicleid,
+      'txcipher' => $txcipher,
+      'rxcipher' => $rxcipher,
+      'clienttype' => $clienttype,
+      'lastping' => time,
+      'permissions' =>'*' ) );
 
   # Send out server welcome message
   AE::log debug => "#$fn $clienttype $vkey tx MP-S 0 $servertoken $serverdigest";
   my $towrite = "MP-S 0 $servertoken $serverdigest\r\n";
-  $conns{$fn}{'tx'} += length($towrite);
-  $hdl->push_write($towrite);
-  return if ($hdl->destroyed);
+  ConnIncAttribute($fn,'tx',length($towrite));
+  ConnTransmit($fn, 'v2raw', $towrite);
+  # return if ($hdl->destroyed);
 
   # Account for it...
   FunctionCall('DbUtilisation',$owner,$vehicleid,$clienttype,length($line)+2,length($towrite));
 
   # Login...
-  &io_login($fn,$hdl,$owner,$vehicleid,$clienttype,$rest);
+  &do_login($fn,$owner,$vehicleid,$clienttype,$rest);
   }
 
-sub io_line_ap_30
+sub ap_30
   {
-  my ($fn,$hdl,$line,$apkey) = @_;
+  my ($fn,$line,$apkey) = @_;
 
-  if (defined $conns{$fn}{'ap_already'})
+  if (ConnHadAttribute($fn,'ap_already'))
     {
     AE::log note => "#$fn C - error: Already auto-provisioned on this connection";
     AE::log info => "#$fn C - tx AP-X";
     my $towrite = "AP-X\r\n";
-    $conns{$fn}{'tx'} += length($towrite);
-    $hdl->push_write($towrite);
+    ConnIncAttribute($fn,'tx',length($towrite));
+    ConnTransmit($fn, 'v2raw', $towrite);
     return;
     }
-  $conns{$fn}{'ap_already'} = 1;
+  ConnSetAttribute($fn,'ap_already',1);
   my $row = &FunctionCall('DbGetAutoProvision',$apkey);
   if (!defined $row)
     {
     AE::log note => "#$fn C - no auto-provision profile found for $apkey";
     AE::log info => "#$fn C - tx AP-X";
     my $towrite = "AP-X\r\n";
-    $conns{$fn}{'tx'} += length($towrite);
-    $hdl->push_write($towrite);
+    ConnIncAttribute($fn,'tx',length($towrite));
+    ConnTransmit($fn, 'v2raw', $towrite);
     return;
     }
   # All ok, let's send the data...
   my $towrite = "AP-S 0 ".join(' ',$row->{'ap_stoken'},$row->{'ap_sdigest'},$row->{'ap_msg'})."\r\n";
   AE::log info => "#$fn C - tx AP-S 0 ".join(' ',$row->{'ap_stoken'},$row->{'ap_sdigest'},$row->{'ap_msg'});
-  $conns{$fn}{'tx'} += length($towrite);
-  $hdl->push_write($towrite);
+  ConnIncAttribute($fn,'tx',length($towrite));
+  ConnTransmit($fn, 'v2raw', $towrite);
   }
 
-sub io_line_welcome_31
+sub welcome_31
   {
-  my ($fn,$hdl,$line,$clienttype,$username,$password,$vehicleid,$rest) = @_;
+  my ($fn,$line,$clienttype,$username,$password,$vehicleid,$rest) = @_;
 
   my $permissions = FunctionCall('Authenticate',$username,$password);
   if ($permissions ne '')
     {
     if (! IsPermitted($permissions,'v2'))
       {
-      $hdl->destroy;
-      delete $conns{$fn};
+      ConnShutdown($fn);
+      ConnFinish($fn);
       AE::log info => "#$fn - - error - Insufficient permission rights for 'v2' access - aborting connection";
       return;
       }
@@ -543,50 +536,51 @@ sub io_line_welcome_31
         {
         AE::log info => "#$fn - - got vehicle V=$vehicleid";
         my $vkey = $username . '/' . $vehicleid;
-        $conns{$fn}{'owner'} = $username;
-        $conns{$fn}{'vehicleid'} = $vehicleid;
-        $conns{$fn}{'owner'} = $username;
-        $conns{$fn}{'vkey'} = $vkey;
-        $conns{$fn}{'clienttype'} = $clienttype;
-        $conns{$fn}{'lastping'} = time;
-        $conns{$fn}{'permissions'} = $permissions;
+        ConnSetAttributes($fn,
+          ( 'owner' => $username,
+            'vehicleid' =>  $vehicleid,
+            'owner' => $username,
+            'vkey' => $vkey,
+            'clienttype' => $clienttype,
+            'lastping' => time,
+            'permissions' => $permissions ) );
 
         AE::log debug => "#$fn $clienttype $vkey tx MP-S 1 $username $vehicleid";
         my $towrite = "MP-S 1 $username $vehicleid\r\n";
-        $conns{$fn}{'tx'} += length($towrite);
-        $hdl->push_write($towrite);
+        ConnIncAttribute($fn,'tx',length($towrite));
+        ConnTransmit($fn, 'v2raw', $towrite);
         FunctionCall('DbUtilisation',$username,$vehicleid,$clienttype,length($line)+2,length($towrite));
-        &io_login($fn,$hdl,$username,$vehicleid,$clienttype,$rest);
+        &do_login($fn,$username,$vehicleid,$clienttype,$rest);
         return;
         }
       }
     }
 
-  $hdl->destroy;
-  delete $conns{$fn};
+  ConnShutdown($fn);
+  ConnFinish($fn);
   AE::log info => "#$fn - - error - Incorrect client authentication - aborting connection";
   return;
   }
 
-sub io_login
+sub do_login
   {
-  my ($fn,$hdl,$owner,$vehicleid,$clienttype,$rest) = @_;
+  my ($fn,$owner,$vehicleid,$clienttype,$rest) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
 
-  &log($fn, $clienttype, $owner, $vehicleid, "got proto #" . $conns{$fn}{'protscheme'} . "/$clienttype login");
+  &log($fn, $clienttype, $owner, $vehicleid, "got proto #" . ConnGetAttribute($fn,'protscheme') . "/$clienttype login");
 
   if ($clienttype eq 'A')      # An APP login
     {
-    $app_conns{$vkey}{$fn} = $fn;
+    AppConnect($owner,$vehicleid,$fn);
     # Notify any listening cars
-    my $cfn = $car_conns{$vkey};
+    my $cfn = CarConnection($owner,$vehicleid);
     if (defined $cfn)
       {
-      &io_tx($cfn, $conns{$cfn}{'handle'}, 'Z', scalar keys %{$app_conns{$vkey}});
+      ConnTransmit($cfn, 'v2', 'Z', AppConnectionCount($owner,$vehicleid));
       }
     # And notify the app itself
-    &io_tx($fn, $hdl, 'Z', (defined $car_conns{$vkey})?"1":"0");
+    ConnTransmit($fn, 'v2', 'Z', (defined CarConnection($owner,$vehicleid))?"1":"0");
     # Update the app with current stored messages
     my $vrec = &FunctionCall('DbGetVehicle',$owner,$vehicleid);
     my $v_ptoken = $vrec->{'v_ptoken'};
@@ -596,24 +590,24 @@ sub io_login
         {
         if ($v_ptoken ne '')
           {
-          &io_tx($fn, $hdl, 'E', 'T'.$v_ptoken);
+          ConnTransmit($fn, 'v2', 'E', 'T'.$v_ptoken);
           $v_ptoken = ''; # Make sure it only gets sent once
           }
-        &io_tx($fn, $hdl, 'E', 'M'.$row->{'m_code'}.$row->{'m_msg'});
+        ConnTransmit($fn, 'v2', 'E', 'M'.$row->{'m_code'}.$row->{'m_msg'});
         }
       else
         {
-        &io_tx($fn, $hdl, $row->{'m_code'},$row->{'m_msg'});
+        ConnTransmit($fn, 'v2', $row->{'m_code'},$row->{'m_msg'});
         }
       }
-    &io_tx($fn, $hdl, 'T', $vrec->{'v_lastupdatesecs'});
+    ConnTransmit($fn, 'v2', 'T', $vrec->{'v_lastupdatesecs'});
     }
 
   elsif ($clienttype eq 'B')      # A BATCHCLIENT login
     {
-    $btc_conns{$vehicleid}{$fn} = $fn;
+    BatchConnect($owner,$vehicleid,$fn);
     # Send peer status
-    &io_tx($fn, $hdl, 'Z', (defined $car_conns{$vkey})?"1":"0");
+    ConnTransmit($fn, 'v2', 'Z', (defined CarConnection($owner,$vehicleid))?"1":"0");
     # Send current stored messages
     my $vrec = &FunctionCall('DbGetVehicle',$owner,$vehicleid);
     my $v_ptoken = $vrec->{'v_ptoken'};
@@ -623,84 +617,86 @@ sub io_login
         {
         if ($v_ptoken ne '')
           {
-          &io_tx($fn, $hdl, 'E', 'T'.$v_ptoken);
+          ConnTransmit($fn, 'v2', 'E', 'T'.$v_ptoken);
           $v_ptoken = ''; # Make sure it only gets sent once
           }
-        &io_tx($fn, $hdl, 'E', 'M'.$row->{'m_code'}.$row->{'m_msg'});
+        ConnTransmit($fn, 'v2', 'E', 'M'.$row->{'m_code'}.$row->{'m_msg'});
         }
       else
         {
-        &io_tx($fn, $hdl, $row->{'m_code'},$row->{'m_msg'});
+        ConnTransmit($fn, 'v2', $row->{'m_code'},$row->{'m_msg'});
         }
       }
-    &io_tx($fn, $hdl, 'T', $vrec->{'v_lastupdatesecs'});
+    ConnTransmit($fn, 'v2', 'T', $vrec->{'v_lastupdatesecs'});
     }
 
   elsif ($clienttype eq 'C')      # A CAR login
     {
-    if (defined $car_conns{$vkey})
+    if (defined CarConnection($owner,$vehicleid))
       {
       # Car is already logged in - terminate it
-      &io_terminate($car_conns{$vkey},$conns{$car_conns{$vkey}}{'handle'},$owner,$vehicleid, "error - duplicate car login - clearing first connection");
+      &io_terminate(CarConnection($owner,$vehicleid),$owner,$vehicleid, "error - duplicate car login - clearing first connection");
       }
-    $car_conns{$vkey} = $fn;
+    CarConnect($owner,$vehicleid,$fn);
     # Notify any listening apps & batch clients
-    &io_tx_clients($owner, $vehicleid, 'Z', '1');
+    ClientsTransmit($owner, $vehicleid, 'v2', 'Z', '1');
     # And notify the car itself about listening apps
-    my $appcount = (defined $app_conns{$vkey})?(scalar keys %{$app_conns{$vkey}}):0;
-    &io_tx($fn, $hdl, 'Z', $appcount);
+    ConnTransmit($fn, 'v2', 'Z', AppConnectionCount($owner,$vehicleid));
     }
   }
 
 sub io_terminate
   {
-  my ($fn, $handle, $owner, $vehicleid, $msg) = @_;
+  my ($fn, $owner, $vehicleid, $msg) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
 
   #AE::log error => $msg if (defined $msg);
-  &log($fn, $conns{$fn}{'clienttype'}, $owner, $vehicleid, $msg, "error") if (defined $msg);
+  &log($fn, ConnGetAttribute($fn,'clienttype'), $owner, $vehicleid, $msg, "error") if (defined $msg);
 
-  if ((defined $vehicleid)&&(defined $conns{$fn}{'clienttype'}))
+  if ((defined $vehicleid)&&(ConnHasAttribute($fn,'clienttype')))
     {
-    if ($conns{$fn}{'clienttype'} eq 'C')
+    if (ConnGetAttribute($fn,'clienttype') eq 'C')
       {
-      delete $car_conns{$vkey};
+      CarDisconnect($owner,$vehicleid,$fn);
       # Notify any listening apps & batch clients
-      &io_tx_clients($owner, $vehicleid, 'Z', '0');
+      ClientsTransmit($owner, $vehicleid, 'v2', 'Z', '0');
       # Cleanup group messages
-      if (defined $conns{$fn}{'cargroups'})
+      if (ConnHasAttribute($fn,'cargroups'))
         {
-        foreach (keys %{$conns{$fn}{'cargroups'}})
+        foreach (keys %{ConnGetAttribute($fn,'cargroups')})
           {
           delete $group_msgs{$_}{$vkey};
           }
         }
       }
-    elsif ($conns{$fn}{'clienttype'} eq 'A')
+    elsif (ConnGetAttribute($fn,'clienttype') eq 'A')
       {
       &io_cleanup_cmdqueue($fn,"A",$owner,$vehicleid);
-      delete $app_conns{$vkey}{$fn};
+      AppDisconnect($owner,$vehicleid,$fn);
       # Notify car about new app count
-      &io_tx_car($owner, $vehicleid, 'Z', scalar keys %{$app_conns{$vkey}});
+      CarTransmit($owner, $vehicleid, 'v2', 'Z', AppConnectionCount($owner,$vehicleid));
       # Cleanup group messages
-      if (defined $conns{$fn}{'appgroups'})
+      if (ConnHasAttribute($fn,'appgroups'))
         {
-        foreach (keys %{$conns{$fn}{'appgroups'}})
+        foreach (keys %{ConnGetAttribute($fn,'appgroups')})
           {
           delete $group_subs{$_}{$fn};
           }
         }
       }
-    elsif ($conns{$fn}{'clienttype'} eq 'B')
+    elsif (ConnGetAttribute($fn,'clienttype') eq 'B')
       {
       &io_cleanup_cmdqueue($fn,"B",$owner,$vehicleid);
-      delete $btc_conns{$vkey}{$fn};
+      BatchDisconnect($owner,$vehicleid,$fn);
       }
     }
 
-  $handle->destroy if (defined $handle);
-  delete $conns{$fn} if (defined $fn);;
+  if (defined $fn)
+    {
+    ConnShutdown($fn);
+    ConnFinish($fn);
+    }
 
   return;
   }
@@ -711,14 +707,14 @@ sub io_cleanup_cmdqueue
 
   my $vkey = $owner . '/' . $vehicleid;
 
-  my $cfn = $car_conns{$vkey};
+  my $cfn = CarConnection($owner,$vehicleid);
   my $changed = 0;
   if ((defined $cfn) &&
-      (defined $conns{$cfn}) &&
-      (defined $conns{$cfn}{'cmdqueue'}) &&
-      (scalar @{$conns{$cfn}{'cmdqueue'}} > 0))
+      (ConnDefined($cfn)) &&
+      (ConnHasAttribute($cfn,'cmdqueue')) &&
+      (scalar @{ConnGetAttribute($cfn,'cmdqueue')} > 0))
     {
-    foreach my $fd (@{$conns{$cfn}{'cmdqueue'}})
+    foreach my $fd (@{ConnGetAttribute($cfn,'cmdqueue')})
       {
       if ($fd eq $fn)
         { $fd=0; $changed=1; }
@@ -726,86 +722,76 @@ sub io_cleanup_cmdqueue
     }
   if ($changed)
     {
-    AE::log info => "#$fn $clienttype $vkey cmd cleanup of #$fn for $vehicleid (queue now ".join(',',@{$conns{$cfn}{'cmdqueue'}}).")";
+    AE::log info => "#$fn $clienttype $vkey cmd cleanup of #$fn for $vehicleid (queue now ".join(',',@{ConnGetAttribute($cfn,'cmdqueue')}).")";
     }
   }
 
-sub io_tx
+sub callback_io_tx_handle
   {
-  my ($fn, $handle, $code, $data) = @_;
+  my ($fn, $format, @data) = @_;
 
+  my $handle = ConnGetAttribute($fn,'handle');
   return if ($handle->destroyed);
 
-  my $vid = $conns{$fn}{'vehicleid'};
-  my $owner = $conns{$fn}{'owner'};
+  if ($format eq 'v2raw')
+    {
+    # Simple raw transmission...
+    $handle->push_write(join('',@data));
+    return;
+    }
+
+  return if ($format ne 'v2');
+
+  my ($code,$message) = @data;
+
+  my $vid = ConnGetAttribute($fn,'vehicleid');
+  my $owner = ConnGetAttribute($fn,'owner');
   my $vkey = $owner . '/' . $vid;
-  my $clienttype = $conns{$fn}{'clienttype'}; $clienttype='-' if (!defined $clienttype);
+  my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
 
   my $encoded;
-  if ($conns{$fn}{'protscheme'} eq '0')
-    { $encoded = encode_base64($conns{$fn}{'txcipher'}->RC4("MP-0 $code$data"),''); }
+  if (ConnGetAttribute($fn,'protscheme') eq '0')
+    {
+    my $txc = ConnGetAttributeRef($fn,'txcipher');
+    $encoded = encode_base64($$txc->RC4("MP-0 $code$message"),'');
+    }
   else
     {
-    $encoded = "$code$data";
+    $encoded = "$code$message";
     }
 
   AE::log debug => "#$fn $clienttype $vkey tx enc $encoded";
-  AE::log info => "#$fn $clienttype $vkey tx msg $code $data";
+  AE::log info => "#$fn $clienttype $vkey tx msg $code $message";
   FunctionCall('DbUtilisation',$owner,$vid,$clienttype,0,length($encoded)+2);
   $handle->push_write($encoded."\r\n");
-  $conns{$fn}{'lasttx'} = time;
+  ConnSetAttribute($fn,'lasttx',time);
   }
 
-# Send message to a CAR
-sub io_tx_car
+sub callback_io_shutdown_handle
   {
-  my ($owner, $vehicleid, $code, $data) = @_;
+  my ($fn) = @_;
 
-  my $vkey = $owner . '/' . $vehicleid;
-
-  my $cfn = $car_conns{$vkey};
-  if (defined $cfn)
+  if (ConnHasAttribute($fn, 'handle'))
     {
-    &io_tx($cfn, $conns{$cfn}{'handle'}, $code, $data);
-    }
-  }
-
-# Send message to all clients (for a vehicleid)
-sub io_tx_clients
-  {
-  my ($owner, $vehicleid, $code, $data) = @_;
-
-  my $vkey = $owner . '/' . $vehicleid;
-
-  # Send to connected interactive clients
-  foreach (keys %{$app_conns{$vkey}})
-    {
-    my $afn = $_;
-    &io_tx($afn, $conns{$afn}{'handle'}, $code, $data);
-    }
-
-  # Send to connected batch clients
-  foreach (keys %{$btc_conns{$vkey}})
-    {
-    my $afn = $_;
-    &io_tx($afn, $conns{$afn}{'handle'}, $code, $data);
+    my $hdl = ConnGetAttribute($fn, 'handle');
+    $hdl->destroy;
     }
   }
 
 # Message handlers
 sub io_message
   {
-  my ($fn,$handle,$owner,$vehicleid,$vrec,$code,$data) = @_;
+  my ($fn,$owner,$vehicleid,$vrec,$code,$data) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
 
-  my $clienttype = $conns{$fn}{'clienttype'}; $clienttype='-' if (!defined $clienttype);
+  my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
 
   # Handle system-level messages first
   if ($code eq 'A') ## PING
     {
     AE::log info => "#$fn $clienttype $vkey msg ping from $vehicleid";
-    &io_tx($fn, $handle, "a", "");
+    ConnTransmit($fn, 'v2', 'a', '');
     return;
     }
   elsif ($code eq 'a') ## PING ACK
@@ -817,7 +803,7 @@ sub io_message
     {
     AE::log info => "#$fn $clienttype $vkey msg push notification '$data' => $vehicleid";
     # Send it to any listening apps
-    &io_tx_clients($owner, $vehicleid, $code, $data);
+    ClientsTransmit($owner, $vehicleid, 'v2', $code, $data);
     # And also send via the mobile networks
     if ($data =~ /^(.)(.+)/)
       {
@@ -829,7 +815,7 @@ sub io_message
   elsif ($code eq 'p') ## PUSH SUBSCRIPTION
     {
     my ($appid,$pushtype,$pushkeytype,@vkeys) = split /,/,$data;
-    $conns{$fn}{'appid'} = $appid;
+    ConnSetAttribute($fn,'appid',$appid);
     while (scalar @vkeys > 0)
       {
       my $vk_vehicleid = shift @vkeys;
@@ -858,8 +844,8 @@ sub io_message
     if ($paranoidmsg eq 'T')
       {
       # The paranoid token is being set
-      $conns{$fn}{'ptoken'} = $paranoidtoken;
-      &io_tx_clients($owner, $vehicleid, $code, $data); # Send it on to connected apps
+      ConnSetAttribute($fn,'ptoken',$paranoidtoken);
+      ClientsTransmit($owner, $vehicleid, 'v2', $code, $data); # Send it on to connected apps
       if ($vrec->{'v_ptoken'} ne $paranoidtoken)
         {
         # Invalidate any stored paranoid messages for this vehicle
@@ -899,12 +885,12 @@ sub io_message
       foreach my $row (@rows)
         {
         $k++;
-        &io_tx($fn, $handle, 'c', sprintf('30,0,%d,%d,%s,%s',$k,(scalar @rows),
+        ConnTransmit($fn, 'v2', 'c', sprintf('30,0,%d,%d,%s,%s',$k,(scalar @rows),
                $row->{'u_date'},$row->{'data'}));
         }
       if ($k == 0)
         {
-        &io_tx($fn, $handle, 'c', '30,1,No GPRS utilisation data available');
+        ConnTransmit($fn, 'v2', 'c', '30,1,No GPRS utilisation data available');
         }
       return;
       }
@@ -918,17 +904,17 @@ sub io_message
       foreach my $row (@rows)
         {
         $k++;
-        &io_tx($fn, $handle, 'c', sprintf('31,0,%d,%d,%s,%d,%d,%d,%s,%s',$k,(scalar @rows),
-               $row->{'h_recordtype'},
-               $row->{'distinctrecs'},
-               $row->{'totalrecs'},
-               $row->{'totalsize'},
-               $row->{'first'},
-               $row->{'last'}));
+        ConnTransmit($fn, 'v2', 'c', sprintf('31,0,%d,%d,%s,%d,%d,%d,%s,%s',$k,(scalar @rows),
+          $row->{'h_recordtype'},
+          $row->{'distinctrecs'},
+          $row->{'totalrecs'},
+          $row->{'totalsize'},
+          $row->{'first'},
+          $row->{'last'}));
         }
       if ($k == 0)
         {
-        &io_tx($fn, $handle, 'c', '31,1,No historical data available');
+        ConnTransmit($fn, 'v2', 'c', '31,1,No historical data available');
         }
       return;
       }
@@ -942,23 +928,24 @@ sub io_message
       foreach my $row (@rows)
         {
         $k++;
-        &io_tx($fn, $handle, 'c', sprintf('32,0,%d,%d,%s,%s,%d,%s',$k,(scalar @rows),
-               $row->{'h_recordtype'}, $row->{'h_timestamp'}, $row->{'h_recordnumber'}, $row->{'h_data'}));
+        ConnTransmit($fn, 'v2', 'c', sprintf('32,0,%d,%d,%s,%s,%d,%s',$k,(scalar @rows),
+          $row->{'h_recordtype'}, $row->{'h_timestamp'}, $row->{'h_recordnumber'}, $row->{'h_data'}));
         }
       if ($k == 0)
         {
-        &io_tx($fn, $handle, 'c', '32,1,No historical data available');
+        ConnTransmit($fn, 'v2', 'c', '32,1,No historical data available');
         }
       return;
       }
-    my $cfn = $car_conns{$vkey};
+    my $cfn = CarConnection($owner,$vehicleid);
     if (defined $cfn)
       {
       # Let's record the FN of the app/batch sending this command
-      push @{$conns{$cfn}{'cmdqueue'}},$fn;
-      AE::log info => "#$fn $clienttype $vkey cmd req for $vehicleid (queue now ".join(',',@{$conns{$cfn}{'cmdqueue'}}).")";
+      my $cc = ConnGetAttributeRef($cfn,'cmdqueue');
+      push @{$$cc},$fn;
+      AE::log info => "#$fn $clienttype $vkey cmd req for $vehicleid (queue now ".join(',',@{ConnGetAttribute($cfn,'cmdqueue')}).")";
       }
-    &io_tx_car($owner, $vehicleid, $code, $data); # Send it on to the car
+    CarTransmit($owner, $vehicleid, 'v2', $code, $data); # Send it on to the car
     return;
     }
   elsif ($m_code eq 'c')
@@ -969,34 +956,35 @@ sub io_message
       return;
       }
     # Forward to apps and batch clients
-    if (scalar @{$conns{$fn}{'cmdqueue'}} > 0)
+    if (scalar @{ConnGetAttribute($fn,'cmdqueue')} > 0)
       {
       # We have a specific client to send the response to
       my $cfn;
       # Nasty hacky code to determine multi-line responses for command functions 1 and 3
       my ($func,$result,$now,$max,$rest) = split /,/,$data,5;
+      my $cc = ConnGetAttributeRef($fn,'cmdqueue');
       if ((($func == 1)||($func == 3)) &&
           (($result != 0)||($now < ($max-1))))
         {
-        $cfn = $conns{$fn}{'cmdqueue'}[0];
+        $cfn = @{$$cc}[0];
         }
-      $cfn = shift @{$conns{$fn}{'cmdqueue'}} if (!defined $cfn);
+      $cfn = shift @{$$cc} if (!defined $cfn);
       if ($cfn == 0)
         {
         # Client has since disconnected, so ignore it.
-        AE::log info => "#$fn $clienttype $vkey cmd rsp discard for $vehicleid (queue now ".join(',',@{$conns{$fn}{'cmdqueue'}}).")";
+        AE::log info => "#$fn $clienttype $vkey cmd rsp discard for $vehicleid (queue now ".join(',',@{ConnGetAttribute($fn,'cmdqueue')}).")";
         }
       else
         {
         # Send to this one specific client
-        AE::log info => "#$fn $clienttype $vkey cmd rsp to #$cfn for $vehicleid (queue now ".join(',',@{$conns{$fn}{'cmdqueue'}}).")";
-        &io_tx($cfn, $conns{$cfn}{'handle'}, $code, $data);
+        AE::log info => "#$fn $clienttype $vkey cmd rsp to #$cfn for $vehicleid (queue now ".join(',',@{ConnGetAttribute($fn,'cmdqueue')}).")";
+        ConnTransmit($cfn, 'v2', $code, $data);
         }
       }
     else
       {
       # Send it to all clients...
-      &io_tx_clients($owner, $vehicleid, $code, $data);
+      ClientsTransmit($owner, $vehicleid, 'v2', $code, $data);
       }
     return;
     }
@@ -1009,13 +997,14 @@ sub io_message
       {
       AE::log info => "#$fn $clienttype $vkey msg group update $groupid $groupmsg";
       # Store the update
-      $conns{$fn}{'cargroups'}{$groupid} = 1;
+      my $cg = ConnGetAttributeRef($fn,'cargroups');
+      $$cg->{$groupid} = 1;
       $group_msgs{$groupid}{$vkey} = $groupmsg;
       # Notify all the apps
       foreach(keys %{$group_subs{$groupid}})
         {
         my $afn = $_;
-        &io_tx($afn, $conns{$afn}{'handle'}, $m_code, join(',',$vehicleid,$groupid,$groupmsg));
+        ConnTransmit($afn, 'v2', $m_code, join(',',$vehicleid,$groupid,$groupmsg));
         }
       }
     return;
@@ -1028,7 +1017,8 @@ sub io_message
     if ($clienttype eq 'A')
       {
       AE::log info => "#$fn $clienttype $vkey msg group subscribe $groupid";
-      $conns{$fn}{'appgroups'}{$groupid} = 1;
+      my $ag = ConnGetAttributeRef($fn,'appgroups');
+      $$ag->{$groupid} = 1;
       $group_subs{$groupid}{$fn} = $fn;
       }
     # Send all outstanding group messages...
@@ -1037,7 +1027,7 @@ sub io_message
       my $gvkey = $_;
       my $gvehicleid = $1 if ($gvkey =~ /^.+\/(.+)$/);
       my $msg = $group_msgs{$groupid}{$gvkey};
-      &io_tx($fn, $conns{$fn}{'handle'}, 'g', join(',',$gvehicleid,$groupid,$msg));
+      ConnTransmit($fn, 'v2', 'g', join(',',$gvehicleid,$groupid,$msg));
       }
     return;
     }
@@ -1075,7 +1065,7 @@ sub io_message
       {
       FunctionCall('DbSaveHistorical',UTCTime(time+$h_timediff),$h_recordtype,$h_recordnumber,$owner,$vehicleid,$h_data,UTCTime(time+($h_lifetime-$h_timediff)));
       }
-    &io_tx($fn, $conns{$fn}{'handle'}, 'h', $h_ackcode);
+    ConnTransmit($fn, 'v2', 'h', $h_ackcode);
     return;
     }
 
@@ -1088,7 +1078,7 @@ sub io_message
       $m_data =~ s/,performance,,/,performance,/;
       }
     # Let's store the data in the database...
-    my $ptoken = $conns{$fn}{'ptoken'}; $ptoken="" if (!defined $ptoken);
+    my $ptoken = ConnGetAttribute($fn,'ptoken'); $ptoken="" if (!defined $ptoken);
     FunctionCall('DbSaveCarMessage', $owner, $vehicleid, $m_code, 1, UTCTime(), $m_paranoid, $ptoken, $m_data);
     if ($loghistory_tim > 0)
       {
@@ -1096,18 +1086,18 @@ sub io_message
       }
     # And send it on to the apps...
     AE::log debug => "#$fn $clienttype $vkey msg handle $m_code $m_data";
-    &io_tx_clients($owner, $vehicleid, $code, $data);
+    ClientsTransmit($owner, $vehicleid, 'v2', $code, $data);
     if ($m_code eq "F")
       {
       # Let's follow up with server version...
-      &io_tx_clients($owner, $vehicleid, "f", GetVersion());
+      ClientsTransmit($owner, $vehicleid, 'v2', 'f', GetVersion());
       }
-    &io_tx_clients($owner, $vehicleid, "T", 0);
+    ClientsTransmit($owner, $vehicleid, 'v2', 't', 0);
     }
   elsif ($clienttype eq 'A')
     {
     # Send it on to the car...
-    &io_tx_car($owner, $vehicleid, $code, $data);
+    CarTransmit($owner, $vehicleid, 'v2', $code, $data);
     }
   }
 

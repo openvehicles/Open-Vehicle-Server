@@ -236,9 +236,9 @@ sub http_request_api_vehicles
   foreach my $row (FunctionCall('dbGetOwnerCars', $username))
     {
     my $vehicleid = $row->{'vehicleid'};
-    my $carcount = FunctionCall('CarConnectionCount', $username, $vehicleid); $carcount=0 if (!defined $carcount);
-    my $appcount = FunctionCall('AppConnectionCount', $username, $vehicleid); $appcount=0 if (!defined $appcount);
-    my $btccount = FunctionCall('BtcConnectionCount', $username, $vehicleid); $btccount=0 if (!defined $btccount);
+    my $carcount = CarConnectionCount();
+    my $appcount = AppConnectionCount();
+    my $btccount = BatchConnectionCount();
 
     my %h = ( 'id'=>$vehicleid, 'v_net_connected'=>$carcount, 'v_apps_connected'=>$appcount, 'v_btcs_connected'=>$btccount );
     push @result, \%h;
