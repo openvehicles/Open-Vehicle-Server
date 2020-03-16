@@ -122,6 +122,7 @@ sub FunctionCall
     }
   else
     {
+    AE::log error => "- - - Function $fn does not exist";
     return undef;
     }
   }
