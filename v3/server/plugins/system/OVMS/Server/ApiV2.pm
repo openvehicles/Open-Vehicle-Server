@@ -20,6 +20,7 @@ use OVMS::Server::Plugin;
 use Socket qw(SOL_SOCKET SO_KEEPALIVE);
 use IO::Handle;
 use MIME::Base64;
+use Protocol::WebSocket;
 
 use Exporter qw(import);
 
@@ -261,8 +262,11 @@ sub io_handle_welcome
   my ($hdl, $line) = @_;
 
   my $fn = $hdl->fh->fileno();
-  $hdl->push_read(line => \&io_line);
-  &welcome($fn, $line);
+
+  if (&welcome($fn, $line))
+    {
+    $hdl->push_read(line => \&io_line);
+    }
   }
 
 sub welcome
@@ -282,18 +286,20 @@ sub welcome
       {
       ConnSetAttribute($fn,'protscheme',$2);
       &welcome_30($fn,$line,$1,$3,$4,uc($5),$7);
+      return 1;
       }
     elsif ($2 eq '1')
       {
       ConnSetAttribute($fn,'protscheme',$2);
       &welcome_31($fn,$line,$1,$3,$4,uc($5),$7);
+      return 1;
       }
     else
       {
       ConnShutdown($fn);
       ConnFinish($fn);
       AE::log debug => "#$fn - - unsupported protection scheme '$2' - aborting connection";
-      return;
+      return 0;
       }
     }
   elsif ($line =~ /^AP-C\s+(\S)\s+(\S+)/)
@@ -305,22 +311,67 @@ sub welcome
       {
       ConnSetAttribute($fn,'protscheme',$1);
       &ap_30($fn,$line,$2);
+      return 1;
       }
     else
       {
       ConnShutdown($fn);
       ConnFinish($fn);
       AE::log debug => "#$fn - - unsupported protection scheme '$2' - aborting connection";
-      return;
+      return 0;
       }
+    }
+  elsif (($line =~ /^GET\s+\/apiv2\/?\s+HTTP\/\S+$/)&&(ConnGetAttribute($fn,'proto') =~ /^v2/))
+    {
+    # A websocket connection
+    my $handle = ConnGetAttribute($fn,'handle');
+    my $hs = Protocol::WebSocket::Handshake::Server->new;
+    my $frame = Protocol::WebSocket::Frame->new;
+    ConnSetAttribute($fn,'ws_handshake',$hs);
+    ConnSetAttribute($fn,'ws_frame',$frame);
+    $hs->parse($line."\r\n");
+    $handle->on_read(sub
+      {
+      my $hdl = shift;
+      my $chunk = $hdl->{rbuf};
+      $hdl->{rbuf} = undef;
+      if (!$hs->is_done)
+        {
+        $hs->parse($chunk);
+        if ($hs->is_done)
+          {
+          AE::log info => "#$fn - - connection upgraded to websocket";
+          ConnSetAttribute($fn,'proto','ws/'.ConnGetAttribute($fn,'proto'));
+          ConnSetAttribute($fn,'callback_tx',\&callback_io_tx_ws);
+          $hdl->push_write($hs->to_string);
+          return 0;
+          }
+        }
+      $frame->append($chunk);
+      while (my $message = $frame->next)
+        {
+        my $wsline = $message;
+        if (ConnHasAttribute($fn,'owner'))
+          {
+          # Connection has logged on already
+          &line($fn,$wsline);
+          }
+        else
+          {
+          &welcome($fn,$wsline);
+          }
+        }
+      } );
+    return 0;
     }
   else
     {
     ConnShutdown($fn);
     ConnFinish($fn);
     AE::log debug => "#$fn - - error - unrecognised message from vehicle";
-    return;
+    return 0;
     }
+  return 0;
   }
 
 sub io_line
@@ -346,11 +397,15 @@ sub line
 
   return if (!ConnHasAttribute($fn,'vehicleid'));
 
-  my $message;
+  my $message = $line;
   if (ConnGetAttribute($fn,'protscheme') eq '0')
     {
     my $rxc = ConnGetAttributeRef($fn,'rxcipher');
     $message = $$rxc->RC4(decode_base64($line));
+    }
+  elsif (ConnGetAttribute($fn,'protscheme') eq '1')
+    {
+    $message = 'MP-0 ' . $message;
     }
 
   #
@@ -546,7 +601,7 @@ sub welcome_31
             'permissions' => $permissions ) );
 
         AE::log debug => "#$fn $clienttype $vkey tx MP-S 1 $username $vehicleid";
-        my $towrite = "MP-S 1 $username $vehicleid\r\n";
+        my $towrite = "MP-S 1 $username $vehicleid";
         ConnIncAttribute($fn,'tx',length($towrite));
         ConnTransmit($fn, 'v2raw', $towrite);
         FunctionCall('DbUtilisation',$username,$vehicleid,$clienttype,length($line)+2,length($towrite));
@@ -736,7 +791,7 @@ sub callback_io_tx_handle
   if ($format eq 'v2raw')
     {
     # Simple raw transmission...
-    $handle->push_write(join('',@data));
+    $handle->push_write(join('',@data)."\r\n");
     return;
     }
 
@@ -776,6 +831,49 @@ sub callback_io_shutdown_handle
     my $hdl = ConnGetAttribute($fn, 'handle');
     $hdl->destroy;
     }
+  }
+
+sub callback_io_tx_ws
+  {
+  my ($fn, $format, @data) = @_;
+
+  my $handle = ConnGetAttribute($fn,'handle');
+  return if ($handle->destroyed);
+
+  my $frame = ConnGetAttributeRef($fn,'ws_frame');
+
+  if ($format eq 'v2raw')
+    {
+    # Simple raw transmission...
+    $handle->push_write($$frame->new(join('',@data))->to_bytes);
+    return;
+    }
+
+  return if ($format ne 'v2');
+
+  my ($code,$message) = @data;
+
+  my $vid = ConnGetAttribute($fn,'vehicleid');
+  my $owner = ConnGetAttribute($fn,'owner');
+  my $vkey = $owner . '/' . $vid;
+  my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
+
+  my $encoded;
+  if (ConnGetAttribute($fn,'protscheme') eq '0')
+    {
+    my $txc = ConnGetAttributeRef($fn,'txcipher');
+    $encoded = encode_base64($$txc->RC4("MP-0 $code$message"),'');
+    }
+  else
+    {
+    $encoded = "$code$message";
+    }
+
+  AE::log debug => "#$fn $clienttype $vkey tx enc $encoded";
+  AE::log info => "#$fn $clienttype $vkey tx msg $code $message";
+  FunctionCall('DbUtilisation',$owner,$vid,$clienttype,0,length($encoded)+2);
+  $handle->push_write($$frame->new($encoded)->to_bytes);
+  ConnSetAttribute($fn,'lasttx',time);
   }
 
 # Message handlers
