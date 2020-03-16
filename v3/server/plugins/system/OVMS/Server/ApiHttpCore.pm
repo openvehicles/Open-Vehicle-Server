@@ -233,7 +233,7 @@ sub http_request_api_vehicles
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
   my @result;
-  foreach my $row (FunctionCall('dbGetOwnerCars', $username))
+  foreach my $row (FunctionCall('DbGetOwnerCars', $username))
     {
     my $vehicleid = $row->{'vehicleid'};
     my $carcount = CarConnectionCount();
@@ -772,7 +772,7 @@ sub http_request_api_historical
   if (!defined $datatype)
     {
     # A Request for the historical data summary
-    foreach my $row (FunctionCall('dbGetHistoricalSummary', $username, $vehicleid))
+    foreach my $row (FunctionCall('DbGetHistoricalSummary', $username, $vehicleid))
       {
       my %h;
       foreach (qw(h_recordtype distinctrecs totalrecs totalsize first last))
@@ -785,7 +785,7 @@ sub http_request_api_historical
   else
     {
     # A request for a specific type of historical data
-    foreach my $row (FunctionCall('dbGetHistoricalRecords',$username,$vehicleid,$datatype))
+    foreach my $row (FunctionCall('DbGetHistoricalRecords',$username,$vehicleid,$datatype))
       {
       my %h;
       foreach (qw(h_timestamp h_recordnumber h_data))

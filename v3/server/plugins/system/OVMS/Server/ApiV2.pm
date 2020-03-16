@@ -571,14 +571,14 @@ sub welcome_31
       return;
       }
     AE::log info => "#$fn - - authenticated";
-    my $orec = FunctionCall('dbGetOwner', $username);
+    my $orec = FunctionCall('DbGetOwner', $username);
     if (defined $orec)
       {
       AE::log info => "#$fn - - got owner";
       my $vrec;
       if ($vehicleid eq '*')
         {
-        my @ovrecs = FunctionCall('dbGetOwnerCars',$username);
+        my @ovrecs = FunctionCall('DbGetOwnerCars',$username);
         $vrec = $ovrecs[0] if (scalar @ovrecs > 0);
         AE::log info => "#$fn - - got " . (scalar @ovrecs) . " cars";
         $vehicleid = $vrec->{'vehicleid'};
@@ -600,8 +600,13 @@ sub welcome_31
             'lastping' => time,
             'permissions' => $permissions ) );
 
-        AE::log debug => "#$fn $clienttype $vkey tx MP-S 1 $username $vehicleid";
-        my $towrite = "MP-S 1 $username $vehicleid";
+        my @cars;
+        foreach my $vrec (&FunctionCall('DbGetOwnerCars',$username))
+          {
+          push @cars, $vrec->{'vehicleid'};
+          }
+        AE::log debug => "#$fn $clienttype $vkey tx MP-S 1 $username $vehicleid ".join(' ',@cars);
+        my $towrite = "MP-S 1 $username $vehicleid ".join(' ',@cars);
         ConnIncAttribute($fn,'tx',length($towrite));
         ConnTransmit($fn, 'v2raw', $towrite);
         FunctionCall('DbUtilisation',$username,$vehicleid,$clienttype,length($line)+2,length($towrite));
@@ -979,7 +984,7 @@ sub io_message
       {
       # Special case of an app requesting (non-paranoid) the GPRS data
       my $k = 0;
-      my @rows = FunctionCall('dbGetHistoricalDaily',$owner,$vehicleid,'*-OVM-Utilisation',90);
+      my @rows = FunctionCall('DbGetHistoricalDaily',$owner,$vehicleid,'*-OVM-Utilisation',90);
       foreach my $row (@rows)
         {
         $k++;
@@ -997,7 +1002,7 @@ sub io_message
       # Special case of an app requesting (non-paranoid) the historical data summary
       my ($h_since) = $3;
       $h_since='0000-00-00' if (!defined $h_since);
-      my @rows = FunctionCall('dbGetHistoricalSummary',$owner,$vehicleid,$h_since);
+      my @rows = FunctionCall('DbGetHistoricalSummary',$owner,$vehicleid,$h_since);
       my $k = 0;
       foreach my $row (@rows)
         {
@@ -1021,7 +1026,7 @@ sub io_message
       # Special case of an app requesting (non-paranoid) the GPRS data
       my ($h_recordtype,$h_since) = split /,/,$3,2;
       $h_since='0000-00-00' if (!defined $h_since);
-      my @rows = FunctionCall('dbGetHistoricalRecords', $owner, $vehicleid, $h_recordtype, $h_since);
+      my @rows = FunctionCall('DbGetHistoricalRecords', $owner, $vehicleid, $h_recordtype, $h_since);
       my $k = 0;
       foreach my $row (@rows)
         {

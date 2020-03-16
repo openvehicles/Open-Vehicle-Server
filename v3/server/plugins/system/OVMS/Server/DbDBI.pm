@@ -56,12 +56,12 @@ sub new
   RegisterFunction('DbGetVehicle',\&DbGetVehicle);
   RegisterFunction('DbGetAutoProvision',\&DbGetAutoProvision);
   RegisterFunction('DbGetMessages',\&DbGetMessages);
-  RegisterFunction('dbGetHistoricalDaily',\&dbGetHistoricalDaily);
-  RegisterFunction('dbGetHistoricalRecords',\&dbGetHistoricalRecords);
-  RegisterFunction('dbGetHistoricalSummary',\&dbGetHistoricalSummary);
-  RegisterFunction('dbGetNotify',\&dbGetNotify);
-  RegisterFunction('dbGetOwner',\&dbGetOwner);
-  RegisterFunction('dbGetOwnerCars',\&dbGetOwnerCars);
+  RegisterFunction('DbGetHistoricalDaily',\&DbGetHistoricalDaily);
+  RegisterFunction('DbGetHistoricalRecords',\&DbGetHistoricalRecords);
+  RegisterFunction('DbGetHistoricalSummary',\&DbGetHistoricalSummary);
+  RegisterFunction('DbGetNotify',\&DbGetNotify);
+  RegisterFunction('DbGetOwner',\&DbGetOwner);
+  RegisterFunction('DbGetOwnerCars',\&DbGetOwnerCars);
   RegisterFunction('DbSaveHistorical',\&DbSaveHistorical);
   RegisterFunction('DbSaveHistoricalNumeric',\&DbSaveHistoricalNumeric);
   RegisterFunction('DbRegisterPushNotify',\&DbRegisterPushNotify);
@@ -71,7 +71,7 @@ sub new
   RegisterFunction('DbGetOwnerTokens',\&DbGetOwnerTokens);
   RegisterFunction('DbSaveToken',\&DbSaveToken);
   RegisterFunction('DbDeleteToken',\&DbDeleteToken);
-  RegisterFunction('dbClearOwnerCaches',\&dbClearOwnerCaches);
+  RegisterFunction('DbClearOwnerCaches',\&DbClearOwnerCaches);
 
   return $self;
   }
@@ -167,7 +167,7 @@ sub DBOwnerIDByName
     }
   }
 
-sub dbClearOwnerCaches
+sub DbClearOwnerCaches
   {
   %cache_ownernamebyid = ();
   %cache_owneridbyname = ();
@@ -265,7 +265,7 @@ sub DbGetMessages
   return @rows;
   }
 
-sub dbGetHistoricalDaily
+sub DbGetHistoricalDaily
   {
   my ($ownername, $vehicleid, $recordtype, $days) = @_;
 
@@ -287,7 +287,7 @@ sub dbGetHistoricalDaily
   return @rows;
   }
 
-sub dbGetHistoricalRecords
+sub DbGetHistoricalRecords
   {
   my ($ownername, $vehicleid, $recordtype, $since) = @_;
 
@@ -306,7 +306,7 @@ sub dbGetHistoricalRecords
   return @rows;
   }
 
-sub dbGetHistoricalSummary
+sub DbGetHistoricalSummary
   {
   my ($ownername, $vehicleid, $since) = @_;
 
@@ -328,7 +328,7 @@ sub dbGetHistoricalSummary
   return @rows;
   }
 
-sub dbGetNotify
+sub DbGetNotify
   {
   my ($ownername, $vehicleid) = @_;
 
@@ -345,7 +345,7 @@ sub dbGetNotify
   return @rows;
   }
 
-sub dbGetOwner
+sub DbGetOwner
   {
   my ($ownername) = @_;
 
@@ -360,7 +360,7 @@ sub dbGetOwner
   return $row;
   }
 
-sub dbGetOwnerCars
+sub DbGetOwnerCars
   {
   my ($ownername) = @_;
 

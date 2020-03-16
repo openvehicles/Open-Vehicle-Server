@@ -86,7 +86,7 @@ sub PushNotify
   return if (($alerttype eq 'E') && ($alertmsg =~ /\:\sDMC\:/));
 
   # Push the notifications out to subscribers...
-  CANDIDATE: foreach my $row (FunctionCall('dbGetNotify',$owner,$vehicleid))
+  CANDIDATE: foreach my $row (FunctionCall('DbGetNotify',$owner,$vehicleid))
     {
     my %rec;
     $rec{'owner'} = $owner;

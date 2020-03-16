@@ -60,7 +60,7 @@ sub Authenticate
   {
   my ($user,$password) = @_;
 
-  my $rec = FunctionCall('dbGetOwner',$user);
+  my $rec = FunctionCall('DbGetOwner',$user);
   return '' if (!defined $rec); # Authentication fail if user record not found
 
   # Check user password authentication
