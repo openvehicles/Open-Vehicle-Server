@@ -62,7 +62,7 @@ my @longitudes = ( 114.186994, 114.186064, 114.167956, 114.111264, 114.218114, 1
 print STDERR "I am the demo car\n";
 
 rand;
-my $client_token;
+our ($client_token, $txcipher, $rxcipher);
 foreach (0 .. 21)
   { $client_token .= substr($b64tab,rand(64),1); }
 print STDERR "  Client token is  $client_token\n";
@@ -71,47 +71,6 @@ my $client_hmac = Digest::HMAC->new($shared_secret, "Digest::MD5");
 $client_hmac->add($client_token);
 my $client_digest = $client_hmac->b64digest();
 print STDERR "  Client digest is $client_digest\n";
-
-print $sock "MP-C 0 $client_token $client_digest DEMO\r\n";
-
-my $line = <$sock>;
-chop $line;
-chop $line;
-print STDERR "  Received $line from server\n";
-my ($welcome,$crypt,$server_token,$server_digest) = split /\s+/,$line;
-
-print STDERR "  Received $server_token $server_digest from server\n";
-
-my $d_server_digest = decode_base64($server_digest);
-my $client_hmac = Digest::HMAC->new($shared_secret, "Digest::MD5");
-$client_hmac->add($server_token);
-if ($client_hmac->digest() ne $d_server_digest)
-  {
-  print STDERR "  Client detects server digest is invalid - aborting\n";
-  exit(1);
-  }
-print STDERR "  Client verification of server digest is ok\n";
-
-$client_hmac = Digest::HMAC->new($shared_secret, "Digest::MD5");
-$client_hmac->add($server_token);
-$client_hmac->add($client_token);
-my $client_key = $client_hmac->digest;
-print STDERR "  Client version of shared key is: ",encode_base64($client_key,''),"\n";
-
-our $txcipher = Crypt::RC4::XS->new($client_key);
-$txcipher->RC4(chr(0) x 1024); # Prime the cipher
-our $rxcipher = Crypt::RC4::XS->new($client_key);
-$rxcipher->RC4(chr(0) x 1024); # Prime the cipher
-
-my $encrypted = encode_base64($txcipher->RC4("MP-0 A"),'');
-print STDERR "  Sending message $encrypted\n";
-print $sock "$encrypted\r\n";
-
-$line = <$sock>;
-chop $line;
-chop $line;
-print STDERR "  Received $line from server\n";
-print STDERR "  Server message decodes to: ",$rxcipher->RC4(decode_base64($line)),"\n";
 
 # Now, let's go for it...
 my $travelling = 1;
@@ -132,8 +91,8 @@ my $valetmode = 0;
 srand();
 
 my $handle = new AnyEvent::Handle(fh => $sock, on_error => \&io_error, keepalive => 1, no_delay => 1);
-$handle->push_read (line => \&io_line);
-&statmsg();
+$handle->push_write("MP-C 0 $client_token $client_digest DEMO\r\n");
+$handle->push_read (line => \&io_login);
 
 my $tim = AnyEvent->timer (after => 60, interval => 60, cb => \&io_tim);
 
@@ -196,6 +155,42 @@ sub io_tim
 
   &statmsg();
   }
+
+sub io_login
+  {
+  my ($hdl, $line) = @_;
+
+  print STDERR "  Received login $line from server\n";
+  my ($welcome,$crypt,$server_token,$server_digest) = split /\s+/,$line;
+
+  print STDERR "  Received $server_token $server_digest from server\n";
+
+  my $d_server_digest = decode_base64($server_digest);
+  my $client_hmac = Digest::HMAC->new($shared_secret, "Digest::MD5");
+  $client_hmac->add($server_token);
+  if ($client_hmac->digest() ne $d_server_digest)
+    {
+    print STDERR "  Client detects server digest is invalid - aborting\n";
+    exit(1);
+    }
+  print STDERR "  Client verification of server digest is ok\n";
+
+  $client_hmac = Digest::HMAC->new($shared_secret, "Digest::MD5");
+  $client_hmac->add($server_token);
+  $client_hmac->add($client_token);
+  my $client_key = $client_hmac->digest;
+  print STDERR "  Client version of shared key is: ",encode_base64($client_key,''),"\n";
+
+  $txcipher = Crypt::RC4::XS->new($client_key);
+  $txcipher->RC4(chr(0) x 1024); # Prime the cipher
+
+  $rxcipher = Crypt::RC4::XS->new($client_key);
+  $rxcipher->RC4(chr(0) x 1024); # Prime the cipher
+
+  $handle->push_read (line => \&io_line);
+
+  &statmsg();
+  };
 
 sub io_line
   {
@@ -361,6 +356,7 @@ sub statmsg
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 D$cb,$doors2,$lockunlock,$pem,$motor,$battery,$trip,$odometer,50,0,$ambiant,0,1,1,12.0,0"),"")."\r\n");
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 W29,$front,40,$back,29,$front,40,$back,1"),"")."\r\n");
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 gDEMOCARS,$soc,$speed,90,0,1,120,$lat,$lon"),'')."\r\n");
+#  $handle->push_write(encode_base64($txcipher->RC4("MP-0 PETR,104,16384"),'')."\r\n");
 #  $handle->push_write(encode_base64($txcipher->RC4("MP-0 PIHello demo world"),'')."\r\n");
   }
 
