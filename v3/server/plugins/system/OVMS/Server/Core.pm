@@ -34,7 +34,7 @@ our @EXPORT = qw(
 
 my $VERSION;
 if (-e '/usr/bin/git')
-  { $VERSION = `/usr/bin/git describe --always --tags --dirty`; }
+  { $VERSION = `/usr/bin/git describe --always --tags --dirty`; chop $VERSION; }
 else
   { $VERSION = '3.0.0-custom'; }
 
