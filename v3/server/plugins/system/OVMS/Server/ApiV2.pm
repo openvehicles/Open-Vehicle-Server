@@ -513,7 +513,7 @@ sub welcome_30
 
   # Send out server welcome message
   AE::log debug => "#$fn $clienttype $vkey tx MP-S 0 $servertoken $serverdigest";
-  my $towrite = "MP-S 0 $servertoken $serverdigest\r\n";
+  my $towrite = "MP-S 0 $servertoken $serverdigest";
   ConnIncAttribute($fn,'tx',length($towrite));
   ConnTransmit($fn, 'v2raw', $towrite);
   # return if ($hdl->destroyed);
@@ -533,7 +533,7 @@ sub ap_30
     {
     AE::log note => "#$fn C - error: Already auto-provisioned on this connection";
     AE::log info => "#$fn C - tx AP-X";
-    my $towrite = "AP-X\r\n";
+    my $towrite = "AP-X";
     ConnIncAttribute($fn,'tx',length($towrite));
     ConnTransmit($fn, 'v2raw', $towrite);
     return;
@@ -544,13 +544,13 @@ sub ap_30
     {
     AE::log note => "#$fn C - no auto-provision profile found for $apkey";
     AE::log info => "#$fn C - tx AP-X";
-    my $towrite = "AP-X\r\n";
+    my $towrite = "AP-X";
     ConnIncAttribute($fn,'tx',length($towrite));
     ConnTransmit($fn, 'v2raw', $towrite);
     return;
     }
   # All ok, let's send the data...
-  my $towrite = "AP-S 0 ".join(' ',$row->{'ap_stoken'},$row->{'ap_sdigest'},$row->{'ap_msg'})."\r\n";
+  my $towrite = "AP-S 0 ".join(' ',$row->{'ap_stoken'},$row->{'ap_sdigest'},$row->{'ap_msg'});
   AE::log info => "#$fn C - tx AP-S 0 ".join(' ',$row->{'ap_stoken'},$row->{'ap_sdigest'},$row->{'ap_msg'});
   ConnIncAttribute($fn,'tx',length($towrite));
   ConnTransmit($fn, 'v2raw', $towrite);
