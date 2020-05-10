@@ -34,7 +34,7 @@ if (!PluginLoaded('ApiHttp'))
   {
   AE::log error => "Error: ApiHttp MUST be loaded before this plugin";
   }
-
+  
 use vars qw{
   };
 
@@ -236,9 +236,9 @@ sub http_request_api_vehicles
   foreach my $row (FunctionCall('DbGetOwnerCars', $username))
     {
     my $vehicleid = $row->{'vehicleid'};
-    my $carcount = CarConnectionCount();
-    my $appcount = AppConnectionCount();
-    my $btccount = BatchConnectionCount();
+    my $carcount = CarConnectionCount($username, $vehicleid);
+    my $appcount = AppConnectionCount($username, $vehicleid);
+    my $btccount = BatchConnectionCount($username, $vehicleid);
 
     my %h = ( 'id'=>$vehicleid, 'v_net_connected'=>$carcount, 'v_apps_connected'=>$appcount, 'v_btcs_connected'=>$btccount );
     push @result, \%h;
@@ -280,7 +280,7 @@ sub http_request_api_protocol
 
   my ($vehicleid) = @rest;
 
-  if ( ! DbHasVehicle($username, $vehicleid) )
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
     $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
@@ -315,7 +315,8 @@ sub http_request_api_status
 
   my ($vehicleid) = @rest;
 
-  if ( ! DbHasVehicle($username, $vehicleid) )
+
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
     $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
@@ -405,7 +406,7 @@ sub http_request_api_tpms
 
   my ($vehicleid) = @rest;
 
-  if ( ! DbHasVehicle($username, $vehicleid) )
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
     $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
@@ -451,7 +452,7 @@ sub http_request_api_location
 
   my ($vehicleid) = @rest;
 
-  if ( ! DbHasVehicle($username, $vehicleid) )
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
     $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
@@ -501,7 +502,7 @@ sub http_request_api_charge_get
 
   my ($vehicleid) = @rest;
 
-  if ( ! DbHasVehicle($username, $vehicleid) )
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
     $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
@@ -760,7 +761,7 @@ sub http_request_api_historical
 
   my ($vehicleid,$datatype) = @rest;
 
-  if ( ! DbHasVehicle($username, $vehicleid) )
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
     $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
