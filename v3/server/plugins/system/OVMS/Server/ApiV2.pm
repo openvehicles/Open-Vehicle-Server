@@ -917,13 +917,13 @@ sub io_message
     }
   elsif ($code eq 'p') ## PUSH SUBSCRIPTION
     {
-    my ($appid,$pushtype,$pushkeytype,@vkeys) = split /,/,$data;
+    my ($appid,$pushtype,$pushkeytype,$vkeys) = split /,/,$data,4;
     ConnSetAttribute($fn,'appid',$appid);
-    while (scalar @vkeys > 0)
+    if ((defined $vkeys)&&($vkeys ne '')&&($vkeys =~ /^([^,]+),(.+),([^,]+)$/))
       {
-      my $vk_vehicleid = shift @vkeys;
-      my $vk_netpass = shift @vkeys;
-      my $vk_pushkeyvalue = shift @vkeys;
+      my $vk_vehicleid = $1;
+      my $vk_netpass = $2;
+      my $vk_pushkeyvalue = $3;
 
       my $vk_rec = &FunctionCall('DbGetVehicle',$owner,$vk_vehicleid);
       if ((defined $vk_rec)&&($vk_rec->{'carpass'} eq $vk_netpass))
