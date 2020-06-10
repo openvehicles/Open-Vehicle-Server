@@ -403,7 +403,18 @@ sub ClientsTransmit
 
   foreach my $afn (ClientConnections($owner,$vehicleid))
     {
-    ConnTransmit($afn, $format, @data);
+    if (($conns{$afn}{'owner'} ne $owner) ||
+        ($conns{$afn}{'vehicleid'} ne $vehicleid))
+      {
+      my $clienttype = $conns{$afn}{'clienttype'};
+      my $vowner = $conns{$afn}{'owner'};
+      my $vvehicleid = $conns{$afn}{'vehicleid'};
+      AE::log error => "#$afn $clienttype $vkey ClientsTransmit mismatch $vowner/$vvehicleid";
+      }
+    else
+      {
+      ConnTransmit($afn, $format, @data);
+      }
     }
   }
 
