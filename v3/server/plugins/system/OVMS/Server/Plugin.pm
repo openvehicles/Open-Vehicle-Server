@@ -59,12 +59,14 @@ sub init
     eval
       {
       eval join('','use OVMS::Server::',$plug,';');
+      AE::log error => "- - - error in $plug: $@" if ($@);
       eval join('','$obj = new OVMS::Server::',$plug,';');
+      AE::log error => "- - - error in $plug: $@" if ($@);
       $plugins{$plug} = $obj;
       };
-    if ($@)
+    if (!defined $plugins{$plug})
       {
-      AE::log error => "- - - error in $plug: $@";
+      AE::log error => "- - - plugin $plug could not be installed";
       }
     }
 
