@@ -138,6 +138,8 @@ sub ConnStart
   {
   my ($fn, %attr) = @_;
 
+  delete $conns{$fn};          # Clean-up any residual data for this connection
+
   foreach my $key (keys %attr)
     {
     $conns{$fn}{$key} = $attr{$key};
