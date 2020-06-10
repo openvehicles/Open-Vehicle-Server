@@ -138,6 +138,8 @@ sub ConnStart
   {
   my ($fn, %attr) = @_;
 
+  AE::log info => "#$fn - - ConnStart";
+
   delete $conns{$fn};          # Clean-up any residual data for this connection
 
   foreach my $key (keys %attr)
@@ -149,6 +151,8 @@ sub ConnStart
 sub ConnFinish
   {
   my ($fn) = @_;
+
+  AE::log info => "#$fn - - ConnFinish";
 
   delete $conns{$fn};
   }
@@ -228,6 +232,9 @@ sub CarConnect
 
   my $vkey = $owner . '/' . $vehicleid;
   $car_conns{$vkey} = $fn;
+
+  my $clienttype = $conns{$fn}{'clienttype'};
+  AE::log info => "#$fn $clienttype $vkey CarConnect";
   }
 
 sub CarDisconnect
@@ -235,6 +242,9 @@ sub CarDisconnect
   my ($owner, $vehicleid, $fn) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
+  my $clienttype = $conns{$fn}{'clienttype'};
+  AE::log info => "#$fn $clienttype $vkey CarDisconnect";
+
   delete $car_conns{$vkey};
   }
 
@@ -266,6 +276,9 @@ sub AppConnect
 
   my $vkey = $owner . '/' . $vehicleid;
   $app_conns{$vkey}{$fn} = $fn;
+
+  my $clienttype = $conns{$fn}{'clienttype'};
+  AE::log info => "#$fn $clienttype $vkey AppConnect";
   }
 
 sub AppDisconnect
@@ -273,6 +286,9 @@ sub AppDisconnect
   my ($owner, $vehicleid, $fn) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
+  my $clienttype = $conns{$fn}{'clienttype'};
+  AE::log info => "#$fn $clienttype $vkey AppDisconnect";
+
   delete $app_conns{$vkey}{$fn};
   }
 
@@ -306,6 +322,9 @@ sub BatchConnect
 
   my $vkey = $owner . '/' . $vehicleid;
   $batch_conns{$vkey}{$fn} = $fn;
+
+  my $clienttype = $conns{$fn}{'clienttype'};
+  AE::log info => "#$fn $clienttype $vkey BatchConnect";
   }
 
 sub BatchDisconnect
@@ -313,6 +332,9 @@ sub BatchDisconnect
   my ($owner, $vehicleid, $fn) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
+  my $clienttype = $conns{$fn}{'clienttype'};
+  AE::log info => "#$fn $clienttype $vkey BatchDisconnect";
+
   delete $batch_conns{$vkey}{$fn};
   }
 
