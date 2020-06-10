@@ -409,7 +409,7 @@ sub ClientsTransmit
       my $clienttype = $conns{$afn}{'clienttype'};
       my $vowner = $conns{$afn}{'owner'};
       my $vvehicleid = $conns{$afn}{'vehicleid'};
-      AE::log error => "#$afn $clienttype $vkey ClientsTransmit mismatch $vowner/$vvehicleid";
+      AE::log error => "#$afn $clienttype $owner/$vehicleid ClientsTransmit mismatch $vowner/$vvehicleid";
       }
     else
       {
