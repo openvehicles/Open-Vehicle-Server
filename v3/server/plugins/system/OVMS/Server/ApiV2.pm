@@ -263,6 +263,12 @@ sub io_handle_welcome
 
   my $fn = $hdl->fh->fileno();
 
+  if (! ConnDefined($fn))
+    {
+    AE::log warn => "#$fn - - welcome line received after disconnection - ignore";
+    return;
+    }
+
   if (&welcome($fn, $line))
     {
     $hdl->push_read(line => \&io_line);
@@ -379,6 +385,13 @@ sub io_line
   my ($hdl, $line) = @_;
 
   my $fn = $hdl->fh->fileno();
+
+  if (! ConnDefined($fn))
+    {
+    AE::log warn => "#$fn - - message line received after disconnection - ignore"; 
+    return;
+    }
+
   &line($fn, $line);
   $hdl->push_read(line => \&io_line);
   }
@@ -692,10 +705,11 @@ sub do_login
 
   elsif ($clienttype eq 'C')      # A CAR login
     {
-    if (defined CarConnection($owner,$vehicleid))
+    my $efn = CarConnection($owner,$vehicleid);
+    if (defined $efn)
       {
       # Car is already logged in - terminate it
-      &io_terminate(CarConnection($owner,$vehicleid),$owner,$vehicleid, "error - duplicate car login - clearing first connection");
+      &io_terminate($efn,$owner,$vehicleid, "error - duplicate car login - clearing first connection");
       }
     CarConnect($owner,$vehicleid,$fn);
     # Notify any listening apps & batch clients
