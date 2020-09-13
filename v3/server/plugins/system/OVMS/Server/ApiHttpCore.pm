@@ -337,10 +337,11 @@ sub http_request_api_status
     my ($soc,$units,$linevoltage,$chargecurrent,$chargestate,$chargemode,$idealrange,$estimatedrange,
         $chargelimit,$chargeduration,$chargeb4,$chargekwh,$chargesubstate,$chargestateN,$chargemodeN,
         $chargetimer,$chargestarttime,$chargetimerstale,$cac100,
-		$charge_etr_full,$charge_etr_limit,$charge_limit_range,$charge_limit_soc,
-		$cooldown_active,$cooldown_tbattery,$cooldown_timelimit,
-		$charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
-		$chargetype,$chargepower,$battvoltage,$soh) = split /,/,$rec->{'m_msg'};
+        $charge_etr_full,$charge_etr_limit,$charge_limit_range,$charge_limit_soc,
+        $cooldown_active,$cooldown_tbattery,$cooldown_timelimit,
+        $charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
+        $chargetype,$chargepower,$battvoltage,$soh,$chargepowerinput,$chargerefficiency)
+        = split /,/,$rec->{'m_msg'};
     $result{'soc'} = $soc;
     $result{'units'} = $units;
     $result{'idealrange'} = $idealrange;
@@ -471,7 +472,7 @@ sub http_request_api_location
       return;
       }
     my ($latitude,$longitude,$direction,$altitude,$gpslock,$stalegps,$speed,$tripmeter,
-      $drivemode,$power,$energyused,$energyrecd) = split /,/,$rec->{'m_msg'};
+      $drivemode,$power,$energyused,$energyrecd,$invpower,$invefficiency) = split /,/,$rec->{'m_msg'};
     $result{'latitude'} = $latitude;
     $result{'longitude'} = $longitude;
     $result{'direction'} = $direction;
@@ -484,6 +485,8 @@ sub http_request_api_location
     $result{'power'} = $power;
     $result{'energyused'} = $energyused;
     $result{'energyrecd'} = $energyrecd;
+    $result{'invpower'} = $invpower;
+    $result{'invefficiency'} = $invefficiency;
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
@@ -523,14 +526,17 @@ sub http_request_api_charge_get
     my ($soc,$units,$linevoltage,$chargecurrent,$chargestate,$chargemode,$idealrange,$estimatedrange,
         $chargelimit,$chargeduration,$chargeb4,$chargekwh,$chargesubstate,$chargestateN,$chargemodeN,
         $chargetimer,$chargestarttime,$chargetimerstale,$cac100,
-		$charge_etr_full,$charge_etr_limit,$charge_limit_range,$charge_limit_soc,
-		$cooldown_active,$cooldown_tbattery,$cooldown_timelimit,
-		$charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
-		$chargetype,$chargepower,$battvoltage,$soh) = split /,/,$rec->{'m_msg'};
+        $charge_etr_full,$charge_etr_limit,$charge_limit_range,$charge_limit_soc,
+        $cooldown_active,$cooldown_tbattery,$cooldown_timelimit,
+        $charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
+        $chargetype,$chargepower,$battvoltage,$soh,$chargepowerinput,$chargerefficiency)
+        = split /,/,$rec->{'m_msg'};
     $result{'linevoltage'} = $linevoltage;
     $result{'battvoltage'} = $battvoltage;
     $result{'chargecurrent'} = $chargecurrent;
     $result{'chargepower'} = $chargepower;
+    $result{'chargepowerinput'} = $chargepowerinput;
+    $result{'chargerefficiency'} = $chargerefficiency;
     $result{'chargetype'} = $chargetype;
     $result{'chargestate'} = $chargestate;
     $result{'soc'} = $soc;
