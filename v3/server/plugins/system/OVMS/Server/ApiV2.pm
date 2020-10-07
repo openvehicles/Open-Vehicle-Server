@@ -932,6 +932,7 @@ sub io_message
   elsif ($code eq 'p') ## PUSH SUBSCRIPTION
     {
     my ($appid,$pushtype,$pushkeytype,$vkeys) = split /,/,$data,4;
+    $pushkeytype='production' if ($pushtype eq 'apns');
     ConnSetAttribute($fn,'appid',$appid);
     if ((defined $vkeys)&&($vkeys ne '')&&($vkeys =~ /^([^,]+),(.+),([^,]+)$/))
       {
