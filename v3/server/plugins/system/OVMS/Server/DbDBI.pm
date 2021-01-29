@@ -48,6 +48,7 @@ sub new
     exit(1);
     }
   $db->{mysql_auto_reconnect} = 1;
+  $db->do("SET NAMES utf8");
   $db_tim = AnyEvent->timer (after => 60, interval => 60, cb => \&_db_housekeep);
 
   RegisterFunction('DbDoSQL',\&DbDoSQL);
