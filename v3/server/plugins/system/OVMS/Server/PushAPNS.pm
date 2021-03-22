@@ -17,6 +17,7 @@ use AnyEvent;
 use AnyEvent::Log;
 use AnyEvent::IO;
 use AnyEvent::Socket;
+use AnyEvent::Handle;
 use OVMS::Server::Core;
 use OVMS::Server::Plugin;
 

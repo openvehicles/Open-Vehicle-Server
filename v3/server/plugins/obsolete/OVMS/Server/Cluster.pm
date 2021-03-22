@@ -9,6 +9,7 @@ use Carp;
 
 use AnyEvent;
 use AnyEvent::Log;
+use AnyEvent::Handle;
 
 use Exporter qw(import);
 
