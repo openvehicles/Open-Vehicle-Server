@@ -13,6 +13,7 @@ use warnings;
 use Carp;
 
 use AnyEvent;
+use AnyEvent::Handle;
 use AnyEvent::Socket;
 use AnyEvent::Log;
 use OVMS::Server::Core;
