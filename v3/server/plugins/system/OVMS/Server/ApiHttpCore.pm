@@ -18,6 +18,7 @@ use Data::UUID;
 use Digest::SHA;
 use OVMS::Server::Core;
 use OVMS::Server::Plugin;
+use Time::Piece;
 
 use Exporter qw(import);
 
@@ -73,6 +74,25 @@ sub api_connection_count
   return scalar keys %api_conns;
   }
 
+sub api_delete_session
+  {
+  my ($sessionid) = @_;
+
+  my $username = $api_conns{$sessionid}{'owner'};
+
+  foreach my $row (FunctionCall('DbGetOwnerCars', $username))
+    {
+    my $vehicleid = $row->{'vehicleid'};
+    if (defined AppConnection($username, $vehicleid, 'http:'.$sessionid))
+      {
+      AppDisconnect($username, $vehicleid, 'http:'.$sessionid);
+      CarTransmit($username, $vehicleid, 'v2', 'Z', AppConnectionCount($username, $vehicleid));
+      }
+    }
+
+  delete $api_conns{$sessionid};
+  }
+
 sub api_tim
   {
   my $timeout_api  = MyConfig()->val('server','timeout_api',60*2);
@@ -83,7 +103,7 @@ sub api_tim
     my $expire = AnyEvent->now - $timeout_api;
     if ($lastused < $expire)
       {
-      delete $api_conns{$session};
+      api_delete_session($session);
       AE::log info => join(' ','http','-',$session,'-','session timeout');
       }
     }
@@ -104,7 +124,7 @@ sub http_request_api_cookie_login
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  delete $api_conns{$sessionid} if (defined $api_conns{$sessionid});
+  api_delete_session($sessionid) if (defined $api_conns{$sessionid});
   my $ug = new Data::UUID;
   $sessionid =  $ug->create_str();
 
@@ -127,7 +147,7 @@ sub http_request_api_cookie_logout
   {
   my ($httpd,$req,$sessionid,@rest) = @_;
 
-  delete $api_conns{$sessionid};
+  api_delete_session($sessionid);
   FunctionCall('InfoCount', 'HTTPAPI_sessions', (scalar keys %api_conns));
 
   AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'session destroyed (on request)');
@@ -255,7 +275,42 @@ sub http_request_api_vehicle_get
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  my ($vehicleid) = @rest;
+
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
+    {
+    AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
+    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $httpd->stop_request;
+    return;
+    }
+
+  my %result;
+
+  # Register API APP:
+  AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Vehicle connect',$vehicleid);
+  my $prevappcnt = AppConnectionCount($username, $vehicleid);
+  AppConnect($username, $vehicleid, 'http:'.$sessionid);
+
+  # Notify car:
+  CarTransmit($username, $vehicleid, 'v2', 'Z', AppConnectionCount($username, $vehicleid));
+
+  # Return peer status:
+  $result{'v_net_connected'} = CarConnectionCount($username, $vehicleid);
+  $result{'v_apps_connected'} = AppConnectionCount($username, $vehicleid);
+  $result{'v_btcs_connected'} = BatchConnectionCount($username, $vehicleid);
+  $result{'v_first_peer'} = ($prevappcnt == 0) ? 1 : 0;
+
+  my $rec = &api_vehiclerecord($username, $vehicleid, 'S');
+  if (defined $rec && defined $rec->{'m_msgtime'})
+    {
+    my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+    $result{'m_msgtime_s'} = $rec->{'m_msgtime'};
+    $result{'m_msgage_s'} = time() - $t->epoch;
+    }
+
+  my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
+  $req->respond ( [200, 'Vehicle connected', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -265,7 +320,26 @@ sub http_request_api_vehicle_delete
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  my ($vehicleid) = @rest;
+
+  if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
+    {
+    AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
+    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $httpd->stop_request;
+    return;
+    }
+
+  my %result;
+
+  # Logout API APP:
+  AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Vehicle disconnect',$vehicleid);
+  AppDisconnect($username, $vehicleid, 'http:'.$sessionid);
+
+  # Notify car:
+  CarTransmit($username, $vehicleid, 'v2', 'Z', AppConnectionCount($username, $vehicleid));
+
+  $req->respond ( [200, 'Vehicle disconnected', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, "Disconnect OK\n"] );
   $httpd->stop_request;
   }
 
@@ -342,6 +416,9 @@ sub http_request_api_status
         $charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
         $chargetype,$chargepower,$battvoltage,$soh,$chargepowerinput,$chargerefficiency)
         = split /,/,$rec->{'m_msg'};
+    my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+    $result{'m_msgtime_s'} = $rec->{'m_msgtime'};
+    $result{'m_msgage_s'} = time() - $t->epoch;
     $result{'soc'} = $soc;
     $result{'units'} = $units;
     $result{'idealrange'} = $idealrange;
@@ -359,7 +436,12 @@ sub http_request_api_status
     if (! $rec->{'m_paranoid'})
       {
       my ($doors1,$doors2,$lockunlock,$tpem,$tmotor,$tbattery,$trip,$odometer,$speed,$parktimer,$ambient,
-          $doors3,$staletemps,$staleambient,$vehicle12v,$doors4,$vehicle12v_ref,$doors5,$tcharger,$vehicle12v_current) = split /,/,$rec->{'m_msg'};
+          $doors3,$staletemps,$staleambient,$vehicle12v,$doors4,$vehicle12v_ref,$doors5,$tcharger,
+          $vehicle12v_current,$cabin_temp)
+          = split /,/,$rec->{'m_msg'};
+      my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+      $result{'m_msgtime_d'} = $rec->{'m_msgtime'};
+      $result{'m_msgage_d'} = time() - $t->epoch;
       $result{'fl_dooropen'} =   $doors1 & 0b00000001;
       $result{'fr_dooropen'} =   $doors1 & 0b00000010;
       $result{'cp_dooropen'} =   $doors1 & 0b00000100;
@@ -375,6 +457,7 @@ sub http_request_api_status
       $result{'temperature_motor'} = $tmotor;
       $result{'temperature_battery'} = $tbattery;
       $result{'temperature_charger'} = $tcharger;
+      $result{'temperature_cabin'} = $cabin_temp;
       $result{'tripmeter'} = $trip;
       $result{'odometer'} = $odometer;
       $result{'speed'} = $speed;
@@ -426,6 +509,9 @@ sub http_request_api_tpms
       return;
       }
     my ($fr_pressure,$fr_temp,$rr_pressure,$rr_temp,$fl_pressure,$fl_temp,$rl_pressure,$rl_temp,$staletpms) = split /,/,$rec->{'m_msg'};
+    my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+    $result{'m_msgtime_w'} = $rec->{'m_msgtime'};
+    $result{'m_msgage_w'} = time() - $t->epoch;
     $result{'fr_pressure'} = $fr_pressure;
     $result{'fr_temperature'} = $fr_temp;
     $result{'rr_pressure'} = $rr_pressure;
@@ -473,6 +559,9 @@ sub http_request_api_location
       }
     my ($latitude,$longitude,$direction,$altitude,$gpslock,$stalegps,$speed,$tripmeter,
       $drivemode,$power,$energyused,$energyrecd,$invpower,$invefficiency) = split /,/,$rec->{'m_msg'};
+    my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+    $result{'m_msgtime_l'} = $rec->{'m_msgtime'};
+    $result{'m_msgage_l'} = time() - $t->epoch;
     $result{'latitude'} = $latitude;
     $result{'longitude'} = $longitude;
     $result{'direction'} = $direction;
@@ -531,6 +620,9 @@ sub http_request_api_charge_get
         $charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
         $chargetype,$chargepower,$battvoltage,$soh,$chargepowerinput,$chargerefficiency)
         = split /,/,$rec->{'m_msg'};
+    my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+    $result{'m_msgtime_s'} = $rec->{'m_msgtime'};
+    $result{'m_msgage_s'} = time() - $t->epoch;
     $result{'linevoltage'} = $linevoltage;
     $result{'battvoltage'} = $battvoltage;
     $result{'chargecurrent'} = $chargecurrent;
@@ -572,7 +664,12 @@ sub http_request_api_charge_get
     if (! $rec->{'m_paranoid'})
       {
       my ($doors1,$doors2,$lockunlock,$tpem,$tmotor,$tbattery,$trip,$odometer,$speed,$parktimer,$ambient,
-          $doors3,$staletemps,$staleambient,$vehicle12v,$doors4,$vehicle12v_ref,$doors5,$tcharger,$vehicle12v_current) = split /,/,$rec->{'m_msg'};
+          $doors3,$staletemps,$staleambient,$vehicle12v,$doors4,$vehicle12v_ref,$doors5,$tcharger,
+          $vehicle12v_current,$cabin_temp)
+          = split /,/,$rec->{'m_msg'};
+      my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+      $result{'m_msgtime_d'} = $rec->{'m_msgtime'};
+      $result{'m_msgage_d'} = time() - $t->epoch;
       $result{'cp_dooropen'} =   $doors1 & 0b00000100;
       $result{'pilotpresent'} =  $doors1 & 0b00001000;
       $result{'charging'} =      $doors1 & 0b00010000;
@@ -582,6 +679,7 @@ sub http_request_api_charge_get
       $result{'temperature_battery'} = $tbattery;
       $result{'temperature_charger'} = $tcharger;
       $result{'temperature_ambient'} = $ambient;
+      $result{'temperature_cabin'} = $cabin_temp;
       $result{'carawake'} =      $doors3 & 0b00000010;
       $result{'staletemps'} = $staletemps;
       $result{'staleambient'} = $staleambient;

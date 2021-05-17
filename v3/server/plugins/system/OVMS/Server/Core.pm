@@ -26,7 +26,7 @@ our @EXPORT = qw(
                  ConnSetAttribute ConnSetAttributes ConnIncAttribute
                  ConnDefined ConnKeys
                  CarConnect CarDisconnect CarConnectionCount CarConnection
-                 AppConnect AppDisconnect AppConnectionCount AppConnections
+                 AppConnect AppDisconnect AppConnectionCount AppConnections AppConnection
                  BatchConnect BatchDisconnect BatchConnectionCount BatchConnections
                  ClientConnections
                  ConnTransmit CarTransmit ClientsTransmit ConnShutdown
@@ -277,7 +277,7 @@ sub AppConnect
   my $vkey = $owner . '/' . $vehicleid;
   $app_conns{$vkey}{$fn} = $fn;
 
-  my $clienttype = $conns{$fn}{'clienttype'};
+  my $clienttype = $conns{$fn}{'clienttype'} || '-';
   AE::log info => "#$fn $clienttype $vkey AppConnect";
   }
 
@@ -286,7 +286,7 @@ sub AppDisconnect
   my ($owner, $vehicleid, $fn) = @_;
 
   my $vkey = $owner . '/' . $vehicleid;
-  my $clienttype = $conns{$fn}{'clienttype'};
+  my $clienttype = $conns{$fn}{'clienttype'} || '-';
   AE::log info => "#$fn $clienttype $vkey AppDisconnect";
 
   delete $app_conns{$vkey}{$fn};
@@ -310,6 +310,16 @@ sub AppConnections
 
   return sort keys %{$app_conns{$vkey}};
   }
+
+sub AppConnection
+  {
+  my ($owner, $vehicleid, $fn) = @_;
+
+  my $vkey = $owner . '/' . $vehicleid;
+  return undef if (!defined $app_conns{$vkey}{$fn});
+  return $app_conns{$vkey}{$fn};
+  }
+
 
 ########################################################################
 # Batch App Connection Registry
