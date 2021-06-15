@@ -136,7 +136,7 @@ sub http_request_api_cookie_login
 
   AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'session created');
 
-  $req->respond (  [200, 'Authentication ok', { 'Content-Type' => 'text/plain', 'Set-Cookie' => "ovmsapisession=$sessionid", 'Access-Control-Allow-Origin' => '*' }, "Login ok\n"] );
+  $req->respond (  [200, 'Ok', { 'Content-Type' => 'text/plain', 'Set-Cookie' => "ovmsapisession=$sessionid", 'Access-Control-Allow-Origin' => '*' }, "Login ok\n"] );
   $httpd->stop_request;
   return;
   }
@@ -152,7 +152,7 @@ sub http_request_api_cookie_logout
 
   AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'session destroyed (on request)');
 
-  $req->respond ( [200, 'Logout ok', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Logout ok\n"] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Logout ok\n"] );
   $httpd->stop_request;
   }
 
@@ -172,7 +172,7 @@ sub http_request_api_token_list
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\@result) . "\n";
-  $req->respond ( [200, 'Logout ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -208,7 +208,7 @@ sub http_request_api_token_obtain
                  );
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-  $req->respond ( [200, 'Token obtained', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [201, 'Created', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
 
   $httpd->stop_request;
   return;
@@ -230,7 +230,7 @@ sub http_request_api_token_delete
                    token => $token);
 
     my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-    $req->respond ( [200, 'Token deleted', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+    $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
 
     $httpd->stop_request;
     return;
@@ -265,7 +265,7 @@ sub http_request_api_vehicles
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\@result) . "\n";
-  $req->respond ( [200, 'Logout ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -280,7 +280,7 @@ sub http_request_api_vehicle_get
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -310,7 +310,7 @@ sub http_request_api_vehicle_get
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-  $req->respond ( [200, 'Vehicle connected', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -325,7 +325,7 @@ sub http_request_api_vehicle_delete
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -339,7 +339,7 @@ sub http_request_api_vehicle_delete
   # Notify car:
   CarTransmit($username, $vehicleid, 'v2', 'Z', AppConnectionCount($username, $vehicleid));
 
-  $req->respond ( [200, 'Vehicle disconnected', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, "Disconnect OK\n"] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, "Disconnect OK\n"] );
   $httpd->stop_request;
   }
 
@@ -357,7 +357,7 @@ sub http_request_api_protocol
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -374,7 +374,7 @@ sub http_request_api_protocol
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\@result) . "\n";
-  $req->respond ( [200, 'Logout ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -393,7 +393,7 @@ sub http_request_api_status
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -404,7 +404,7 @@ sub http_request_api_status
     {
     if ($rec->{'m_paranoid'})
       {
-      $req->respond ( [404, 'Vehicle is paranoid', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
+      $req->respond ( [502, 'Bad Gateway', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
       $httpd->stop_request;
       return;
       }
@@ -475,7 +475,7 @@ sub http_request_api_status
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-  $req->respond ( [200, 'Vehicle Status', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -493,7 +493,7 @@ sub http_request_api_tpms
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -504,7 +504,7 @@ sub http_request_api_tpms
     {
     if ($rec->{'m_paranoid'})
       {
-      $req->respond ( [404, 'Vehicle is paranoid', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
+      $req->respond ( [502, 'Bad Gateway', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
       $httpd->stop_request;
       return;
       }
@@ -524,7 +524,7 @@ sub http_request_api_tpms
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-  $req->respond ( [200, 'TPMS', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -542,7 +542,7 @@ sub http_request_api_location
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -553,7 +553,7 @@ sub http_request_api_location
     {
     if ($rec->{'m_paranoid'})
       {
-      $req->respond ( [404, 'Vehicle is paranoid', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
+      $req->respond ( [502, 'Bad Gateway', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
       $httpd->stop_request;
       return;
       }
@@ -579,7 +579,7 @@ sub http_request_api_location
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-  $req->respond ( [200, 'Location', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -597,7 +597,7 @@ sub http_request_api_charge_get
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -608,7 +608,7 @@ sub http_request_api_charge_get
     {
     if ($rec->{'m_paranoid'})
       {
-      $req->respond ( [404, 'Vehicle is paranoid', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
+      $req->respond ( [502, 'Bad Gateway', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
       $httpd->stop_request;
       return;
       }
@@ -691,7 +691,7 @@ sub http_request_api_charge_get
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
-  $req->respond ( [200, 'Location', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -701,7 +701,7 @@ sub http_request_api_charge_put
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -711,7 +711,7 @@ sub http_request_api_charge_delete
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -724,7 +724,7 @@ sub http_request_api_locK_get
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -734,7 +734,7 @@ sub http_request_api_lock_put
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -744,7 +744,7 @@ sub http_request_api_lock_delete
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -757,7 +757,7 @@ sub http_request_api_valet_get
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -767,7 +767,7 @@ sub http_request_api_valet_put
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -777,7 +777,7 @@ sub http_request_api_valet_delete
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -790,7 +790,7 @@ sub http_request_api_features_get
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -800,7 +800,7 @@ sub http_request_api_features_put
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -813,7 +813,7 @@ sub http_request_api_parameters_get
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -823,7 +823,7 @@ sub http_request_api_parameters_put
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -836,7 +836,7 @@ sub http_request_api_reset
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -849,7 +849,7 @@ sub http_request_api_homelink
   {
   my ($httpd, $req, $sessionid, $username, $permissions, @rest) = @_;
 
-  $req->respond ( [404, 'Not yet implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
+  $req->respond ( [501, 'Not Implemented', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Not yet implemented\n"] );
   $httpd->stop_request;
   }
 
@@ -868,7 +868,7 @@ sub http_request_api_historical
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
-    $req->respond ( [404, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
+    $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Forbidden\n"] );
     $httpd->stop_request;
     return;
     }
@@ -902,7 +902,7 @@ sub http_request_api_historical
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\@result) . "\n";
-  $req->respond ( [200, 'Historical Data', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
+  $req->respond ( [200, 'Ok', { 'Content-Type' => 'application/json', 'Access-Control-Allow-Origin' => '*' }, $json] );
   $httpd->stop_request;
   }
 
@@ -973,14 +973,14 @@ sub http_request_in_api
           }
         else
           {
-          $req->respond ( [404, 'Insufficient rights', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Insufficient rights\n"] );
+          $req->respond ( [403, 'Forbidden', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Insufficient rights\n"] );
           $httpd->stop_request;
           return;
           }
         }
       else
         {
-        $req->respond ( [404, 'Authentication failed', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Authentication failed\n"] );
+        $req->respond ( [401, 'Unauthorized', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Authentication failed\n"] );
         $httpd->stop_request;
         return;
         }
