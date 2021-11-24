@@ -139,7 +139,6 @@ function openvehicles_register_form($form, &$form_state)
   $form['telephone'] = array(
     '#title' => t('OVMS Vehicle Telephone number'),
     '#description' => t('The telephone number of the SIM in the module (optional and here just for convenience - you can choose to leave this blank for security reasons). If you do specify it, please use +xxxx format, with the country code.'),
-    '#default_value' => t($vehicle->telephone),
     '#required' => FALSE,
     '#input' => TRUE,
     '#size' => 48,
@@ -547,7 +546,7 @@ function openvehicles_provision_form($form, &$form_state, $user, $vehicleid)
 
     $form['ap_servergroup']['ap_serverip'] = array(
       '#title' => t('OVMS Server'),
-      '#default_value' => '54.197.255.127',
+      '#default_value' => '54.243.136.230',
       '#required' => TRUE,
       '#input' => TRUE,
       '#size' => 15,
@@ -801,6 +800,8 @@ function openvehicles_user($user)
     array('data' => t('Nickname'), 'field' => 'o.vehiclename', 'width' => 150),
     array('data' => t('Server'), 'field' => 'o.v_server'),
     array('data' => t('Telephone'), 'field' => 'o.telephone'),
+/*    array('data' => t('Fasttech Coupon'), 'field' => 'o.couponcode'), */
+    array('data' => t('Hologram Coupon'), 'field' => 'o.hologram'),
     array('data' => t('Action'), 'width' => 100)
     );
 
@@ -813,6 +814,7 @@ function openvehicles_user($user)
   $o_uid = $query->addField('o', 'owner');
   $o_server = $query->addField('o', 'v_server');
   $o_telephone = $query->addField('o', 'telephone');
+/*  $o_couponcode = $query->addField('o', 'couponcode'); */
   $o_type = $query->addField('o', 'v_type');
   $o_deleted = $query->addField('o', 'deleted');
 
@@ -835,17 +837,20 @@ function openvehicles_user($user)
     $src1 = "<img src='/sites/all/modules/openvehicles/images/edit.gif' title='Change Vehicle'>";
     $src2 = "<img src='/sites/all/modules/openvehicles/images/key.gif' title='Change Password'>";
     $src3 = "<img src='/sites/all/modules/openvehicles/images/delete.gif' title='Remove Vehicle'>";
-    $src4 = "<img src='/sites/all/modules/openvehicles/images/provision.png' title='SMS Provision Vehicle'>";
+//    $src4 = "<img src='/sites/all/modules/openvehicles/images/provision.png' title='SMS Provision Vehicle'>";
 
     $rows[] = array(
       array('data' => $vehicle_text, 'nowrap' => 'nowrap'),
       array('data' => $vehicle->vehiclename),
       array('data' => check_plain($vehicle->v_server)),
       array('data' => check_plain($vehicle->telephone)),
+/*      array('data' => check_plain($vehicle->couponcode)), */
+      array('data' => 'OVMS'),
       array('data' => l($src1, 'user/' . $user->uid . '/vehicles/edit/' . $vehicle->vehicleid, array('html'=>TRUE)) . '&nbsp;|&nbsp;' .
                       l($src2, 'user/' . $user->uid . '/vehicles/password/' . $vehicle->vehicleid, array('html'=>TRUE)) . '&nbsp;|&nbsp;' .
-                      l($src3, 'user/' . $user->uid . '/vehicles/delete/' . $vehicle->vehicleid, array('html'=>TRUE)) . '&nbsp;|&nbsp;' .
-                      l($src4, 'user/' . $user->uid . '/vehicles/provision/' . $vehicle->vehicleid, array('html'=>TRUE)))
+                      l($src3, 'user/' . $user->uid . '/vehicles/delete/' . $vehicle->vehicleid, array('html'=>TRUE)))
+// . '&nbsp;|&nbsp;' .
+//                      l($src4, 'user/' . $user->uid . '/vehicles/provision/' . $vehicle->vehicleid, array('html'=>TRUE)))
       );
     }
 
@@ -938,4 +943,3 @@ function openvehicles_mail($key, &$message, $params) {
       break;
   }
 }
-
