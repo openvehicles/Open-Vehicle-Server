@@ -91,7 +91,7 @@ sub _db_housekeep
     }
   if (defined $db)
     {
-    $db->do('DELETE FROM ovms_historicalmessages WHERE h_expires<UTC_TIMESTAMP() LIMIT 1000;');
+    $db->do('DELETE FROM ovms_historicalmessages WHERE h_expires<UTC_TIMESTAMP() LIMIT 2500;');
 
     # Add collected utilisations to database
     CONN: foreach my $key (keys %utilisations)
