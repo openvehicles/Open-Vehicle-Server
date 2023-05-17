@@ -411,8 +411,9 @@ sub ClientsTransmit
   {
   my ($owner, $vehicleid, $format, @data) = @_;
 
-  foreach my $afn (ClientConnections($owner,$vehicleid))
+  CLIENT: foreach my $afn (ClientConnections($owner,$vehicleid))
     {
+    next CLIENT if ($afn !~ /^\d+$/);   # Ignore all the other types (like 'http:...')
     if (($conns{$afn}{'owner'} ne $owner) ||
         ($conns{$afn}{'vehicleid'} ne $vehicleid))
       {
