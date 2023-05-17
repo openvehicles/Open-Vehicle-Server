@@ -190,9 +190,15 @@ sub io_error_handle
   my $clienttype = ConnGetAttribute($fn,'clienttype'); $clienttype='-' if (!defined $clienttype);
 
   if ($msg =~ /^(Broken pipe|Connection reset by peer)$/)
-    { &io_terminate($fn, $owner, $vehicleid, "disconnected"); }
+    {
+    $hdl->stop_read();    # Stop any pending reads from being delivered
+    &io_terminate($fn, $owner, $vehicleid, "disconnected");
+    }
   else
-    { &io_terminate($fn, $owner, $vehicleid, "got error: $msg"); }
+    {
+    $hdl->stop_read();    # Stop any pending reads from being delivered
+    &io_terminate($fn, $owner, $vehicleid, "got error: $msg");
+    }
   }
 
 sub io_timeout_handle
@@ -389,7 +395,7 @@ sub io_line
 
   if (! ConnDefined($fn))
     {
-    AE::log warn => "#$fn - - message line received after disconnection - ignore"; 
+    AE::log warn => "#$fn - - message line received after disconnection - ignore";
     return;
     }
 
