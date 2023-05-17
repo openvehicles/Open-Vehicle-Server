@@ -646,9 +646,16 @@ sub do_login
   {
   my ($fn,$owner,$vehicleid,$clienttype,$rest) = @_;
 
+  my $protscheme = ConnGetAttribute($fn,'protscheme');
+  if ((!defined $protscheme) || ($protscheme eq ''))
+    {
+    AE::log warn => "#$fn $owner/$vehicleid warn - no protocol scheme (perhaps client disconnected)";
+    return;
+    }
+
   my $vkey = $owner . '/' . $vehicleid;
 
-  &log($fn, $clienttype, $owner, $vehicleid, "got proto #" . ConnGetAttribute($fn,'protscheme') . "/$clienttype login");
+  &log($fn, $clienttype, $owner, $vehicleid, "got proto #" . $protscheme . "/$clienttype login");
 
   if ($clienttype eq 'A')      # An APP login
     {
