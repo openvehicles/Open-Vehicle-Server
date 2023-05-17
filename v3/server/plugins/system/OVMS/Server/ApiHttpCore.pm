@@ -865,6 +865,8 @@ sub http_request_api_historical
 
   my ($vehicleid,$datatype) = @rest;
 
+  my $since = $req->url->query_param('since');
+
   if ( ! FunctionCall('DbHasVehicle', $username, $vehicleid) )
     {
     AE::log info => join(' ','http','-',$sessionid,$req->client_host.':'.$req->client_port,'Forbidden access',$vehicleid);
@@ -877,7 +879,7 @@ sub http_request_api_historical
   if (!defined $datatype)
     {
     # A Request for the historical data summary
-    foreach my $row (FunctionCall('DbGetHistoricalSummary', $username, $vehicleid))
+    foreach my $row (FunctionCall('DbGetHistoricalSummary', $username, $vehicleid, $since))
       {
       my %h;
       foreach (qw(h_recordtype distinctrecs totalrecs totalsize first last))
@@ -890,7 +892,7 @@ sub http_request_api_historical
   else
     {
     # A request for a specific type of historical data
-    foreach my $row (FunctionCall('DbGetHistoricalRecords',$username,$vehicleid,$datatype))
+    foreach my $row (FunctionCall('DbGetHistoricalRecords', $username, $vehicleid, $datatype, $since))
       {
       my %h;
       foreach (qw(h_timestamp h_recordnumber h_data))

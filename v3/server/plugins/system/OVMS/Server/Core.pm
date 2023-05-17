@@ -423,7 +423,8 @@ sub ClientsTransmit
       }
     else
       {
-      ConnTransmit($afn, $format, @data);
+      my $clienttype = $conns{$afn}{'clienttype'};
+      ConnTransmit($afn, $format, @data) if ($clienttype ne 'C');
       }
     }
   }

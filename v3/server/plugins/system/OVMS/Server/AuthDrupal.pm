@@ -146,7 +146,7 @@ sub drupal_tim
   FunctionCall('DbDoSQL',
     'UPDATE ovms_owners LEFT JOIN users ON users.uid=ovms_owners.owner '
   . 'SET ovms_owners.pass=users.pass, ovms_owners.status=users.status, ovms_owners.name=users.name, ovms_owners.mail=users.mail, '
-  . 'ovms_owners.deleted=0, ovms_owners.changed=UTC_TIMESTAMP() '
+  . '    ovms_owners.deleted=0, ovms_owners.changed=UTC_TIMESTAMP() '
   . 'WHERE users.pass<>ovms_owners.pass OR users.status<>ovms_owners.status OR users.name<>ovms_owners.name OR users.mail<>ovms_owners.mail');
 
   FunctionCall('DbDoSQL',
