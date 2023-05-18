@@ -148,7 +148,7 @@ sub request
     $ratelimit{$host}{'timers'}{$port} = AnyEvent->timer (after => $delay, cb => sub
       {
       delete $ratelimit{$host}{'timers'}{$port} if (defined $ratelimit{$host});
-      AE::log info => join(' ','http','-','-',$host.':'.$port,'too many requests (delayed)');
+      AE::log info => join(' ','http','-','-',$host.':'.$port,'too many requests (delayed)',$req->method,$req->url);
       $req->respond([429, "Too many requests"]);
       });
     }
