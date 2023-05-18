@@ -32,6 +32,7 @@ my $httpapi_conns_count = 0;  # Count of the number of HTTP API connections
 my $http_server;              # HTTP Server handle
 my $https_server;             # HTTPS Server handle
 my %registrations = ();       # URL registrations
+my $request_ticker_w;         # A period request ticker
 
 use vars qw{
   };
@@ -77,6 +78,8 @@ sub start
                     }
                   );
 
+  $http_server->reg_cb (request => \&request);
+
   my $pemfile = MyConfig()->val('httpapi','sslcrt','conf/ovms_server.pem');
   if (-e $pemfile)
     {
@@ -101,6 +104,74 @@ sub start
                          AE::log info => join(' ','http','-','-',$host.':'.$port,'disconnect(ssl)');
                        }
                     );
+
+    $https_server->reg_cb (request => \&request);
+    }
+  $request_ticker_w = AnyEvent->timer (after => 60, interval => 60, cb => \&request_ticker);
+  }
+
+########################################################
+# API HTTP request handler
+#
+# Attempts to rate-limit requests to ensure fair
+# delivery of services
+
+my %ratelimit;
+sub request
+  {
+  my ($httpd, $req) = @_;
+  my $host = $req->client_host;
+  my $port = $req->client_port;
+  my $key = $host . ':' . $port;
+
+  my $burst = MyConfig()->val('httpapi','ratelimit_http_burst','120');
+  my $delay = MyConfig()->val('httpapi','ratelimit_http_delay','20');
+  my $expire = MyConfig()->val('httpapi','ratelimit_http_expire','300');
+
+  if (!defined $ratelimit{$host})
+    {
+    # Initial allocation
+    $ratelimit{$host}{'quota'} = $burst;
+    }
+  else
+    {
+     $ratelimit{$host}{'quota'}--;
+     $ratelimit{$host}{'quota'}=0 if ($ratelimit{$host}{'quota'}<0);
+    }
+  AE::log info => join(' ','http','-','-',$host.':'.$port,'quota',$ratelimit{$host}{'quota'});
+  $ratelimit{$host}{'expire'} = time + $expire;
+
+  if ($ratelimit{$host}{'quota'} <= 0)
+    {
+    # Need to reject the call
+    $httpd->stop_request;
+    $ratelimit{$host}{'timers'}{$port} = AnyEvent->timer (after => $delay, cb => sub
+      {
+      delete $ratelimit{$host}{'timers'}{$port} if (defined $ratelimit{$host});
+      AE::log info => join(' ','http','-','-',$host.':'.$port,'too many requests (delayed)');
+      $req->respond([429, "Too many requests"]);
+      });
+    }
+  }
+
+sub request_ticker
+  {
+  my $now = time;
+
+  my $permin = MyConfig()->val('httpapi','ratelimit_http_permin','60');
+  my $max = MyConfig()->val('httpapi','ratelimit_http_max','240');
+
+  foreach my $host (keys %ratelimit)
+    {
+    if ($ratelimit{$host}{'expire'} <= $now)
+      {
+      delete $ratelimit{$host};
+      }
+    else
+      {
+      $ratelimit{$host}{'quota'} += $permin;
+      $ratelimit{$host}{'quota'} = $max if ($ratelimit{$host}{'quota'} > $max);
+      }
     }
   }
 
