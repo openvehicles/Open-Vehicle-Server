@@ -498,8 +498,11 @@ sub http_request_api_tpms
     return;
     }
 
-  my $rec = &api_vehiclerecord($username, $vehicleid, 'W');
   my %result;
+  my $rec;
+
+  # try V3 extended TPMS 'Y' record first:
+  $rec = &api_vehiclerecord($username, $vehicleid, 'Y');
   if (defined $rec)
     {
     if ($rec->{'m_paranoid'})
@@ -508,19 +511,70 @@ sub http_request_api_tpms
       $httpd->stop_request;
       return;
       }
-    my ($fr_pressure,$fr_temp,$rr_pressure,$rr_temp,$fl_pressure,$fl_temp,$rl_pressure,$rl_temp,$staletpms) = split /,/,$rec->{'m_msg'};
+
     my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+    $result{'m_msgtime_y'} = $rec->{'m_msgtime'};
+    $result{'m_msgage_y'} = time() - $t->epoch;
+
+    my @tdata = split /,/,$rec->{'m_msg'};
+
+    # record structure: https://docs.openvehicles.com/en/latest/protocol_v2/messages.html#car-tpms-message-0x59-y
+    my @t_name = splice(@tdata, 0, $tdata[0]+1);
+    my @t_press = splice(@tdata, 0, $tdata[0]+1);
+    my $stale_press = shift(@tdata);
+    my @t_temp = splice(@tdata, 0, $tdata[0]+1);
+    my $stale_temp = shift(@tdata);
+    my @t_health = splice(@tdata, 0, $tdata[0]+1);
+    my $stale_health = shift(@tdata);
+    my @t_alert = splice(@tdata, 0, $tdata[0]+1);
+    my $stale_alert = shift(@tdata);
+
+    for (my $i = 1; $i <= $t_name[0]; $i++)
+      {
+      my $tn = lc($t_name[$i]);
+      if ($i <= $t_press[0])  { $result{$tn.'_pressure_kpa'} = $t_press[$i]; }
+      if ($i <= $t_press[0])  { $result{$tn.'_pressure'}     = $t_press[$i] * 0.14503773773020923; }
+      if ($i <= $t_temp[0])   { $result{$tn.'_temperature'}  = $t_temp[$i]; }
+      if ($i <= $t_health[0]) { $result{$tn.'_health'}       = $t_health[$i]; }
+      if ($i <= $t_alert[0])  { $result{$tn.'_alert'}        = $t_alert[$i]; }
+      }
+
+    $result{'stale_pressure'} = $stale_press;
+    $result{'stale_temperature'} = $stale_temp;
+    $result{'stale_health'} = $stale_health;
+    $result{'stale_alert'} = $stale_alert;
+
+    # backwards compatibility:
     $result{'m_msgtime_w'} = $rec->{'m_msgtime'};
     $result{'m_msgage_w'} = time() - $t->epoch;
-    $result{'fr_pressure'} = $fr_pressure;
-    $result{'fr_temperature'} = $fr_temp;
-    $result{'rr_pressure'} = $rr_pressure;
-    $result{'rr_temperature'} = $rr_temp;
-    $result{'fl_pressure'} = $fl_pressure;
-    $result{'fl_temperature'} = $fl_temp;
-    $result{'rl_pressure'} = $rl_pressure;
-    $result{'rl_temperature'} = $rl_temp;
-    $result{'staletpms'} = $staletpms;
+    $result{'staletpms'} = max($stale_press, $stale_temp, $stale_health, $stale_alert);
+    }
+  else
+    {
+    # no 'Y' record found, fallback to V2 'W' record:
+    $rec = &api_vehiclerecord($username, $vehicleid, 'W');
+    if (defined $rec)
+      {
+      if ($rec->{'m_paranoid'})
+        {
+        $req->respond ( [502, 'Bad Gateway', { 'Content-Type' => 'text/plain', 'Access-Control-Allow-Origin' => '*' }, "Paranoid vehicles not supported by api\n"] );
+        $httpd->stop_request;
+        return;
+        }
+      my ($fr_pressure,$fr_temp,$rr_pressure,$rr_temp,$fl_pressure,$fl_temp,$rl_pressure,$rl_temp,$staletpms) = split /,/,$rec->{'m_msg'};
+      my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
+      $result{'m_msgtime_w'} = $rec->{'m_msgtime'};
+      $result{'m_msgage_w'} = time() - $t->epoch;
+      $result{'fr_pressure'} = $fr_pressure;
+      $result{'fr_temperature'} = $fr_temp;
+      $result{'rr_pressure'} = $rr_pressure;
+      $result{'rr_temperature'} = $rr_temperature;
+      $result{'fl_pressure'} = $fl_pressure;
+      $result{'fl_temperature'} = $fl_temperature;
+      $result{'rl_pressure'} = $rl_pressure;
+      $result{'rl_temperature'} = $rl_temperature;
+      $result{'staletpms'} = $staletpms;
+      }
     }
 
   my $json = JSON::XS->new->utf8->canonical->encode (\%result) . "\n";
