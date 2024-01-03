@@ -568,11 +568,11 @@ sub http_request_api_tpms
       $result{'fr_pressure'} = $fr_pressure;
       $result{'fr_temperature'} = $fr_temp;
       $result{'rr_pressure'} = $rr_pressure;
-      $result{'rr_temperature'} = $rr_temperature;
+      $result{'rr_temperature'} = $rr_temp;
       $result{'fl_pressure'} = $fl_pressure;
-      $result{'fl_temperature'} = $fl_temperature;
+      $result{'fl_temperature'} = $fl_temp;
       $result{'rl_pressure'} = $rl_pressure;
-      $result{'rl_temperature'} = $rl_temperature;
+      $result{'rl_temperature'} = $rl_temp;
       $result{'staletpms'} = $staletpms;
       }
     }
