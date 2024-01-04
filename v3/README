@@ -24,21 +24,58 @@ The other scripts are purely for development and testing purposes.
 Android Push Notifications
 ==========================
 
-...are based on Google Cloud Messaging (GCM).
+...are based on Firebase Cloud Messaging (FCM), which is part of the Google Cloud Services.
 
-To be able to send push notifications to Android devices, you need to register a GCM project:
+Special CPAN modules needed:
+  - Net::SSLeay             -- Perl bindings for OpenSSL and LibreSSL by Chris Novakovic
+                                [https://metacpan.org/dist/Net-SSLeay]
+  - WWW::FCM::HTTP::V1      -- FCM library by Yui Takeuchi
+                                [https://metacpan.org/pod/WWW::FCM::HTTP::V1]
 
- - Log in to your Google account
- - Open https://developers.google.com/mobile/add
- - Select platform "Android"
- - Enter an arbitrary project name, e.g. "MyOvmsServer"
- - Package name should be "com.openvehicles.OVMS"
- - Activate "Cloud Messaging" and generate the key
- - Note the API key and project number (= GCM sender ID)
+To be able to send push notifications to Android devices, you need to register a Firebase project.
 
-Enter the API key into your ovms_server.conf and the project number (GCM sender ID) into the
-App vehicle configuration.
+Creating a new Firebase project automatically creates a new Google Cloud project. If you already
+have a Cloud project, you can simply add a Firebase project to that.
+(About Firebase & Cloud projects: https://firebase.google.com/docs/projects/learn-more)
 
-ATT: you will now additionally need the CPAN module "Net::SSLeay" for the HTTPS connection.
+Guide: https://firebase.google.com/docs/android/setup
+
+Create the Firebase project:
+
+  - Log in to the Firebase Console: https://console.firebase.google.com/
+  - Add project
+    - select an existing Cloud project to extend, or enter a new name
+    - disable Analytics when asked
+  - Note the project number (this is your sender ID)
+
+Register the App:
+
+  - On the project's main page, click on the Android icon to add an App
+    - Enter package name: com.openvehicles.OVMS
+    - leave nickname & SHA sum blank
+    - Click "Continue" until getting back to the dashboard
+
+Create a server key:
+
+  - Open the project settings from the menu or via the App icon
+    - Switch to the "Service Accounts" tab
+    - Click "Generate new private key"
+
+Copy the downloaded key file into your OVMS server's "conf" directory, then add…
+
+  api_key_file=conf/<yourkeyfile.json>
+
+to the "[gcm]" section of your "conf/ovms_server.conf".
+
+Verify the server can read the file, but no other users on a shared server.
+Check the server startup log for errors.
+
+When registering a vehicle in the App, enter your project number as noted above
+as the "Sender ID".
+
+If the server encounters permission errors when sending notifications, verify
+the Cloud project has the APIs "Firebase Cloud Messaging API" and "Firebase
+Installations API" enabled. Note: enabling new APIs can take some time to
+propagate.
 
 

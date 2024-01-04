@@ -66,6 +66,7 @@ sub new
   RegisterFunction('DbSaveHistorical',\&DbSaveHistorical);
   RegisterFunction('DbSaveHistoricalNumeric',\&DbSaveHistoricalNumeric);
   RegisterFunction('DbRegisterPushNotify',\&DbRegisterPushNotify);
+  RegisterFunction('DbUnregisterPushNotify',\&DbUnregisterPushNotify);
   RegisterFunction('DbInvalidateParanoidMessages',\&DbInvalidateParanoidMessages);
   RegisterFunction('DbSaveCarMessage',\&DbSaveCarMessage);
   RegisterFunction('DbGetToken',\&DbGetToken);
@@ -408,10 +409,20 @@ sub DbRegisterPushNotify
 
   $db->do("INSERT INTO ovms_notifies (owner,vehicleid,appid,pushtype,pushkeytype,pushkeyvalue,lastupdated) "
         . "VALUES (?,?,?,?,?,?,UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE "
-        . "lastupdated=UTC_TIMESTAMP(), pushkeytype=?, pushkeyvalue=?",
+        . "lastupdated=UTC_TIMESTAMP(), pushtype=?, pushkeytype=?, pushkeyvalue=?",
           undef,
-          DBOwnerIDByName($ownername), $vehicleid, $appid, $pushtype, $pushkeytype, $pushkeyvalue,
-          $pushkeytype, $pushkeyvalue);
+          DBOwnerIDByName($ownername), $vehicleid, $appid,
+          $pushtype, $pushkeytype, $pushkeyvalue,
+          $pushtype, $pushkeytype, $pushkeyvalue);
+  }
+
+sub DbUnregisterPushNotify
+  {
+  my ($ownername, $vehicleid, $appid) = @_;
+
+  $db->do("DELETE FROM ovms_notifies WHERE owner=? AND vehicleid=? AND appid=?",
+          undef,
+          DBOwnerIDByName($ownername), $vehicleid, $appid);
   }
 
 sub DbInvalidateParanoidMessages
