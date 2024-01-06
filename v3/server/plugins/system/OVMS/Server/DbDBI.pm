@@ -40,15 +40,13 @@ sub new
 
   $me = $self;
 
-  # Database ticker
-  $db = DBI->connect(MyConfig()->val('db','path'),MyConfig()->val('db','user'),MyConfig()->val('db','pass'));
+  &connect();
   if (!defined $db)
     {
-    AE::log error => "- - - fatal: cannot connect to database ($!)";
     exit(1);
     }
-  $db->{mysql_auto_reconnect} = 1;
-  $db->do("SET NAMES utf8");
+
+  # Database ticker
   $db_tim = AnyEvent->timer (after => 60, interval => 60, cb => \&_db_housekeep);
 
   RegisterFunction('DbDoSQL',\&DbDoSQL);
@@ -78,17 +76,32 @@ sub new
   return $self;
   }
 
+sub connect
+  {
+  $db = DBI->connect(MyConfig()->val('db','path'),MyConfig()->val('db','user'),MyConfig()->val('db','pass'));
+  if (!defined $db)
+    {
+    AE::log error => "- - - fatal: cannot connect to database ($!)";
+    }
+  else
+    {
+    $db->{mysql_auto_reconnect} = 1;
+    $db->{AutoInactiveDestroy} = 1;     # child processes shall not destroy the connection
+    $db->do("SET NAMES utf8");
+    }
+  }
+
 sub _db_housekeep
   {
   if (!defined $db)
     {
-    $db = DBI->connect(MyConfig()->val('db','path'),MyConfig()->val('db','user'),MyConfig()->val('db','pass'));
+    &connect();
     return;
     }
   if (! $db->ping())
     {
     AE::log error => "- - - lost database connection - reconnecting...";
-    $db = DBI->connect(MyConfig()->val('db','path'),MyConfig()->val('db','user'),MyConfig()->val('db','pass'));
+    &connect();
     }
   if (defined $db)
     {
