@@ -674,7 +674,7 @@ sub http_request_api_charge_get
         $cooldown_active,$cooldown_tbattery,$cooldown_timelimit,
         $charge_estimate,$charge_etr_range,$charge_etr_soc,$idealrange_max,
         $chargetype,$chargepower,$battvoltage,$soh,$chargepowerinput,$chargerefficiency,
-        $battcurrent,$battrangespeed,$chargekwhgrid,$chargekwhgridtotal,$bat_capacity)
+        $battcurrent,$battrangespeed,$chargekwhgrid,$chargekwhgridtotal,$batt_capacity)
         = split /,/,$rec->{'m_msg'};
     my $t = Time::Piece->strptime($rec->{'m_msgtime'}, "%Y-%m-%d %H:%M:%S");
     $result{'m_msgtime_s'} = $rec->{'m_msgtime'};
@@ -713,11 +713,11 @@ sub http_request_api_charge_get
     $result{'charge_etr_range'} = $charge_etr_range;
     $result{'charge_etr_soc'} = $charge_etr_soc;
     $result{'idealrange_max'} = $idealrange_max;
-    $result{'battcurrent'} = $battcurrent;
-    $result{'battrangespeed'} = $battrangespeed;
-    $result{'chargekwhgrid'} = $chargekwhgrid;
-    $result{'chargekwhgridtotal'} = $chargekwhgridtotal;
-    $result{'bat_capacity'} = $bat_capacity;
+    $result{'batt_current'} = $battcurrent;
+    $result{'batt_range_speed'} = $battrangespeed;
+    $result{'charge_kwh_grid'} = $chargekwhgrid;
+    $result{'charge_kwh_grid_total'} = $chargekwhgridtotal;
+    $result{'batt_capacity'} = $batt_capacity;
     }
   $rec= &api_vehiclerecord($username, $vehicleid, 'D');
   if (defined $rec)
