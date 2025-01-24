@@ -1,7 +1,11 @@
 [db]
-path=DBI:mysql:database=openvehicles;host=127.0.0.1
-user=<put the mysql username here>
-pass=<put the mysql password here>
+# connect with UNIX Socket [default]
+path=DBI:mysql:database=openvehicles;mariadb_socket=/var/run/mysqld/mysqld.sock;
+# uncomment to use user/pass instead of socket
+#path=DBI:mysql:database=openvehicles;host=127.0.0.1
+#user=<put the mysql username here>
+#pass=<put the mysql password here>
+
 pw_encode=drupal_password($password)
 
 # example: salting with secret salt & sha256 hashing:
