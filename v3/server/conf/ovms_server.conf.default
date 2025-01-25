@@ -5,7 +5,7 @@ pass=<put the mysql password here>
 
 # uncommentto connect with UNIX Socket
 # please note that you need to comment the rows above if this is used
-path=DBI:mysql:database=openvehicles;mariadb_socket=/var/run/mysqld/mysqld.sock;
+# path=DBI:mysql:database=openvehicles;mariadb_socket=/var/run/mysqld/mysqld.sock;
 
 pw_encode=drupal_password($password)
 
