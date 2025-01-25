@@ -1,10 +1,11 @@
 [db]
-# connect with UNIX Socket [default]
+path=DBI:mysql:database=openvehicles;host=127.0.0.1
+user=<put the mysql username here>
+pass=<put the mysql password here>
+
+# uncommentto connect with UNIX Socket
+# please note that you need to comment the rows above if this is used
 path=DBI:mysql:database=openvehicles;mariadb_socket=/var/run/mysqld/mysqld.sock;
-# uncomment to use user/pass instead of socket
-#path=DBI:mysql:database=openvehicles;host=127.0.0.1
-#user=<put the mysql username here>
-#pass=<put the mysql password here>
 
 pw_encode=drupal_password($password)
 
