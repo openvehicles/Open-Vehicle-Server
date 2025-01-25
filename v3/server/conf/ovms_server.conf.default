@@ -3,9 +3,9 @@ path=DBI:mysql:database=openvehicles;host=127.0.0.1
 user=<put the mysql username here>
 pass=<put the mysql password here>
 
-# uncommentto connect with UNIX Socket
+# uncommentto connect with UNIX Socket and MariaDB
 # please note that you need to comment the rows above if this is used
-# path=DBI:mysql:database=openvehicles;mariadb_socket=/var/run/mysqld/mysqld.sock;
+# path=DBI:MariaDB:database=openvehicles;mariadb_socket=/var/run/mysqld/mysqld.sock;
 
 pw_encode=drupal_password($password)
 
