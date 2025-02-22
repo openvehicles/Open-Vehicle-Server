@@ -8,6 +8,7 @@ WorkingDirectory=/home/openvehicles/v3/v3/server
 ExecStart=/bin/sh -c 'exec ./ovms_server.pl >>/var/log/ovms_server.log 2>&1'
 Restart=always
 RestartSec=5
+LimitNOFILE=infinity
 
 [Install]
 WantedBy=multi-user.target
