@@ -150,6 +150,7 @@ sub gcm_init_con
     api_url      => $gcm_api_url,
     api_key_json => $gcm_api_key_json,
     });
+  $gcm_running = 0;
   AE::log info => "- - - msg gcm connection initialized: " . $gcm_con;
   }
 
@@ -164,7 +165,7 @@ sub gcm_tim
 
   AE::log info => "- - - msg gcm processing queue: " . scalar @gcm_queue . " messages";
 
-  if (my $rec = pop(@gcm_queue))
+  if (my $rec = shift(@gcm_queue))
     {
     my $owner = $rec->{'owner'};
     my $vehicleid = $rec->{'vehicleid'};
