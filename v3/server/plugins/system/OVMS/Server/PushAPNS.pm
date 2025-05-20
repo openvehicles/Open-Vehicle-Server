@@ -157,7 +157,7 @@ sub apns_tim
 	    my %result = @{$header};
 	    my $status = (defined $result{':status'})?$result{':status'}:'unknown';
 	    my $reason = (defined $result{'reason'})?$result{'reason'}:'';
-	    AE::log info => "- - $vehicleid msg apns message sent to $pushkeyvalue with $status:$reason";
+	    AE::log info => "- - $vehicleid msg apns message sent to $pushkeyvalue with $status:$reason" . ((defined $content)?" $content":'');
             }
           );
         }
