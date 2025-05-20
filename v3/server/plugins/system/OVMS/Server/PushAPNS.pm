@@ -18,6 +18,8 @@ use AnyEvent::Log;
 use AnyEvent::IO;
 use AnyEvent::Socket;
 use AnyEvent::Handle;
+use AnyEvent::Util;
+use Net::APNS::Simple;
 use OVMS::Server::Core;
 use OVMS::Server::Plugin;
 
@@ -30,8 +32,6 @@ our @EXPORT = qw();
 my $me; # Reference to our singleton object
 my @apns_queue_sandbox;
 my @apns_queue_production;
-my @apns_queue;
-my $apns_handle;
 my $apns_running=0;
 my $apns_interval;
 my $apnstim;
@@ -101,168 +101,75 @@ sub apns_tim
   return if ($apns_running);
   return if ((scalar @apns_queue_sandbox == 0)&&(scalar @apns_queue_production == 0));
 
-  my ($host,$certfile,$keyfile);
-  if (scalar @apns_queue_sandbox > 0)
-    {
-    # We have notifications to deliver for the sandbox
-    @apns_queue = @apns_queue_sandbox;
-    @apns_queue_sandbox = ();
-    $host = 'gateway.sandbox.push.apple.com';
-    $certfile = $keyfile = 'conf/ovms_apns_sandbox.pem';
-    }
-  elsif (scalar @apns_queue_production > 0)
-    {
-    @apns_queue = @apns_queue_production;
-    @apns_queue_production = ();
-    $host = 'gateway.push.apple.com';
-    $certfile = $keyfile = 'conf/ovms_apns_production.pem';
-    }
-
-  AE::log info => "- - - msg apns processing ".(scalar @apns_queue)." queued notification(s) for $host";
   $apns_running=1;
-
-  tcp_connect $host, 2195, sub
+  SANDPROD: foreach my $sandbox (1,0)
     {
-    my ($fh) = @_;
-
-    if (!defined $fh)
+    my $apns;
+    my @queue;
+    if ($sandbox)
       {
-      AE::log error => "- - - msg apns processing ERROR connecting $host: $!";
-      $apns_running = 0;
+      next SANDPROD if (scalar @apns_queue_sandbox == 0);
+      $apns = Net::APNS::Simple->new(
+        development => 1,
+        cert_file => 'conf/ovms_apns_sandbox.pem',
+	key_file => 'conf/ovms_apns_sandbox.pem',
+        passwd_cb => sub { return '' },
+        bundle_id => 'com.openvehicles.ovms'
+        );
+      @queue = @apns_queue_sandbox;
+      @apns_queue_sandbox = ();
       }
     else
       {
-      AE::log info => "- - - msg apns connected to $host, now establishing SSL security";
-      $apns_handle = new AnyEvent::Handle(
-          fh       => $fh,
-          peername => $host,
-          tls      => "connect",
-          tls_ctx  => { cert_file => $certfile, key_file => $keyfile, verify => 0, verify_peername => $host },
-          on_error => sub
-                {
-                my ($hdl, $fatal, $msg) = @_;
-                AE::log error => "- - - msg apns processing ABORT for $host: $msg";
-                $apns_handle = undef;
-                $apns_running = 0;
-                $_[0]->destroy;
-                },
-          timeout    => 60,
-          on_timeout => sub
-                {
-                AE::log error => "- - - msg apns processing ABORT for $host: TIMEOUT";
-                $apns_handle = undef;
-                $apns_running = 0;
-                $_[0]->destroy;
-                },
-          on_starttls => \&apns_push,
-          on_stoptls  => sub
-                {
-                AE::log error => "- - - msg apns processing ABORT for $host: connection closed";
-                $apns_handle = undef;
-                $apns_running = 0;
-                $_[0]->destroy;
-                }
+      next SANDPROD if (scalar @apns_queue_production == 0);
+      $apns = Net::APNS::Simple->new(
+        cert_file => 'conf/ovms_apns_production.pem',
+        key_file => 'conf/ovms_apns_production.pem',
+        passwd_cb => sub { return '' },
+        bundle_id => 'com.openvehicles.ovms'
+        );
+      @queue = @apns_queue_production;
+      @apns_queue_production = ();
+      }
+
+    AE::log info => "- - - msg apns processing ".(scalar @queue)." queued notification(s) for ".($sandbox?'sandbox':'production');
+    fork_call
+      {
+      my %results = ();
+      foreach my $rec (@queue)
+        {
+	my $vehicleid = $rec->{'vehicleid'};
+        my $alerttype = $rec->{'alerttype'};
+        my $alertmsg = $rec->{'alertmsg'};
+	my $pushkeyvalue = $rec->{'pushkeyvalue'};
+	my $appid = $rec->{'appid'};
+        $apns->prepare(
+	  $pushkeyvalue,
+	  {
+          aps => {
+            alert => $vehicleid . "\n" . $alertmsg,
+            badge => 0,
+            sound => "default",
+            },
+          },
+	  sub {
+            my ($header, $content) = @_;
+	    my $status = 'unknown';
+	    $status = @{$header}[1] if ((defined $header) && (@{$header}[0] eq ':status'));
+	    AE::log info => "- - $vehicleid msg apns message sent to $pushkeyvalue with $status";
+            }
           );
+        }
+      $apns->notify();
       }
-    };
-  AE::log info => "- - - msg apns has been launched";
-  }
-
-sub apns_push
-  {
-  my ($hdl, $success, $error_message) = @_;
-
-  if (!$success)
-    {
-    AE::log error => "- - - connection to apns FAILED: $error_message";
-    undef $apns_handle;
-    $apns_running=0;
-    return;
-    }
-
-  my $fn = $hdl->fh->fileno();
-  AE::log info => "#$fn - - connected to apns for push notification";
-
-  foreach my $rec (@apns_queue)
-    {
-    my $vehicleid = $rec->{'vehicleid'};
-    my $alerttype = $rec->{'alerttype'};
-    my $alertmsg = $rec->{'alertmsg'};
-    my $pushkeyvalue = $rec->{'pushkeyvalue'};
-    my $appid = $rec->{'appid'};
-    AE::log info => "#$fn - $vehicleid msg apns '$alertmsg' => $pushkeyvalue";
-    &apns_send( $pushkeyvalue => { aps => { alert => "$vehicleid\n$alertmsg", sound => 'default' } } );
-    }
-  $apns_handle->on_drain(sub
-                {
-                my ($hdl) = @_;
-                my $fn = $hdl->fh->fileno();
-                AE::log info => "#$fn - - msg apns is drained and done";
-                undef $apns_handle;
-                $apns_running=0;
-                });
-  }
-
-sub apns_send
-  {
-  my ($token, $payload) = @_;
-
-  my $json = JSON::XS->new->utf8->encode ($payload);
-
-  my $btoken = pack "H*",$token;
-
-  $apns_handle->push_write( pack('C', 0) ); # command
-
-  $apns_handle->push_write( pack('n', bytes::length($btoken)) ); # token length
-  $apns_handle->push_write( $btoken );                           # device token
-
-  # Apple Push Notification Service refuses string values as badge number
-  if ($payload->{aps}{badge} && looks_like_number($payload->{aps}{badge}))
-    {
-    $payload->{aps}{badge} += 0;
-    }
-
-  # The maximum size allowed for a notification payload is 256 bytes;
-  # Apple Push Notification Service refuses any notification that exceeds this limit.
-  if ( (my $exceeded = bytes::length($json) - 256) > 0 )
-    {
-    if (ref $payload->{aps}{alert} eq 'HASH')
+    sub
       {
-      $payload->{aps}{alert}{body} = &_trim_utf8($payload->{aps}{alert}{body}, $exceeded);
+      # process child result
+      my $result = shift;
+      $apns_running=0;
+      AE::log info => "- - - msg apns completed ".(scalar @queue)." queued notification(s) for ".($sandbox?'sandbox':'production');
       }
-    else
-      {
-      $payload->{aps}{alert} = &_trim_utf8($payload->{aps}{alert}, $exceeded);
-      }
-
-    $json = JSON::XS->new->utf8->encode($payload);
     }
-
-  $apns_handle->push_write( pack('n', bytes::length($json)) ); # payload length
-  $apns_handle->push_write( $json );                           # payload
-  }
-
-sub _trim_utf8
-  {
-  my ($string, $trim_length) = @_;
-
-  my $string_bytes = JSON::XS->new->utf8->encode($string);
-  my $trimmed = '';
-
-  my $start_length = bytes::length($string_bytes) - $trim_length;
-  return $trimmed if $start_length <= 0;
-
-  for my $len ( reverse $start_length - 6 .. $start_length )
-    {
-    local $@;
-    eval
-      {
-      $trimmed = JSON::XS->new->utf8->decode(substr($string_bytes, 0, $len));
-      };
-    last if $trimmed;
-    }
-
-  return $trimmed;
   }
 
 1;
