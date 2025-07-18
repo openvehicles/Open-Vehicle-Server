@@ -363,15 +363,24 @@ sub welcome
       $frame->append($chunk);
       while (my $message = $frame->next_bytes)
         {
-        my $wsline = $message;
-        if (ConnHasAttribute($fn,'owner'))
+        if (($frame->is_text) || ($frame->is_binary))
           {
-          # Connection has logged on already
-          &line($fn,$wsline);
+          my $wsline = $message;
+          chomp $wsline;
+          use Devel::Hexdump 'xd';
+          if (ConnHasAttribute($fn,'owner'))
+            {
+            # Connection has logged on already
+            &line($fn,$wsline);
+            }
+          else
+            {
+            &welcome($fn,$wsline);
+            }
           }
         else
           {
-          &welcome($fn,$wsline);
+          AE::log debug => "#$fn - - rx websocket ignore frame type ".$frame->opcode;
           }
         }
       } );
