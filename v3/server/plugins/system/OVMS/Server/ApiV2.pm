@@ -367,7 +367,6 @@ sub welcome
           {
           my $wsline = $message;
           chomp $wsline;
-          use Devel::Hexdump 'xd';
           if (ConnHasAttribute($fn,'owner'))
             {
             # Connection has logged on already
