@@ -361,7 +361,7 @@ sub welcome
           }
         }
       $frame->append($chunk);
-      while (my $message = $frame->next)
+      while (my $message = $frame->next_bytes)
         {
         my $wsline = $message;
         if (ConnHasAttribute($fn,'owner'))
