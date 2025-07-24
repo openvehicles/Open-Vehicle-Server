@@ -343,19 +343,22 @@ sub command
 sub statmsg
   {
   my ($front,$back) = ($ambiant+2,$ambiant+6);
-  my ($pem,$motor,$battery) = ($ambiant+10,$ambiant+20,$ambiant+5);
+  my ($pem,$motor,$battery,$charger,$cabin) = ($ambiant+10,$ambiant+20,$ambiant+5,$ambiant,$ambiant+5);
   my $cb = ($travelling == 0)?124:160;
   my $speed = ($travelling == 0)?0:55;
   my $doors2 = ($valetmode == 0)?0:16;
   $doors2 += 8 if ($lockunlock==4);
 
   print STDERR "  Sending status...\n";
-  $handle->push_write(encode_base64($txcipher->RC4("MP-0 F1.5.0,VIN123456789012345,5,1,TRDM,"),'')."\r\n");
-  $handle->push_write(encode_base64($txcipher->RC4("MP-0 S$soc,K,$volts,$amps,$state,$mode,$kmideal,$kmest,13,$chargetime,0,0,$substate,$stateN,$modeN,0,0,1"),'')."\r\n");
-  $handle->push_write(encode_base64($txcipher->RC4("MP-0 L$lat,$lon,90,0,1,1"),'')."\r\n");
-  $handle->push_write(encode_base64($txcipher->RC4("MP-0 D$cb,$doors2,$lockunlock,$pem,$motor,$battery,$trip,$odometer,50,0,$ambiant,0,1,1,12.0,0"),"")."\r\n");
+  $handle->push_write(encode_base64($txcipher->RC4("MP-0 F1.5.0,VIN123456789012345,5,1,TRDM,DNET,25000,86400,DEMO-HW,Wifi-online"),'')."\r\n");
+  $handle->push_write(encode_base64($txcipher->RC4("MP-0 S$soc,K,$volts,$amps,$state,$mode,$kmideal,$kmest,13,$chargetime,0,0,$substate,$stateN,$modeN,0,0,1,160,0,0,80,80,0,31,60,0,0,0,$kmideal,,7.2,12.0,80,7.2,95,1,0,0,0,0,0"),'')."\r\n");
+  $handle->push_write(encode_base64($txcipher->RC4("MP-0 L$lat,$lon,90,0,1,1,$speed,0,0,0,0,0,0,100,AS,12,2,$speed,100"),'')."\r\n");
+  $handle->push_write(encode_base64($txcipher->RC4("MP-0 D$cb,$doors2,$lockunlock,$pem,$motor,$battery,$trip,$odometer,$speed,0,$ambiant,1,1,1,12.0,0,0,$charger,13.5,$cabin"),"")."\r\n");
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 W29,$front,40,$back,29,$front,40,$back,1"),"")."\r\n");
   $handle->push_write(encode_base64($txcipher->RC4("MP-0 gDEMOCARS,$soc,$speed,90,0,1,120,$lat,$lon"),'')."\r\n");
+  $handle->push_write(encode_base64($txcipher->RC4("MP-0 X0,0,0,3.0,0.0,0.0,,stopped,Service A,booster,no,no,0515,1,6,0,0.0,0.0,1,0.0,0.0,0.0,0,0,0,0,0,0,$ambiant,-1"),'')."\r\n");
+  $handle->push_write(encode_base64($txcipher->RC4("MP-0 Y4,FL,FR,RL,RR,4,200.0,200.0,276.0,276.0,4,$front,$front,$back,$back,1,4,100,100,100,100,1,4,1,1,1,1"),'')."\r\n");
+
 #  $handle->push_write(encode_base64($txcipher->RC4("MP-0 PETR,104,16384"),'')."\r\n");
 #  $handle->push_write(encode_base64($txcipher->RC4("MP-0 PIHello demo world"),'')."\r\n");
   }
