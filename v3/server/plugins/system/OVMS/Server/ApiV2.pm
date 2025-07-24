@@ -954,6 +954,7 @@ sub io_message
   elsif ($code eq 'p') ## PUSH SUBSCRIPTION
     {
     my ($appid,$pushtype,$pushkeytype,$vkeys) = split /,/,$data,4;
+
     $pushkeytype='production' if ($pushtype eq 'apns');
     ConnSetAttribute($fn,'appid',$appid);
     if ((defined $vkeys)&&($vkeys ne '')&&($vkeys =~ /^([^,]+),(.+),([^,]+)$/))
@@ -968,6 +969,11 @@ sub io_message
         AE::log info => "#$fn $clienttype $vkey msg push subscription $vk_vehicleid:$pushtype/$pushkeytype => $vk_pushkeyvalue";
         FunctionCall('DbRegisterPushNotify',$owner,$vk_vehicleid,$appid,$pushtype,$pushkeytype,$vk_pushkeyvalue);
         }
+      }
+    elsif ((defined $vkeys) && ($pushkeytype eq 'simple'))
+      {
+      AE::log info => "#$fn $clienttype $vkey msg push subscription $vehicleid:$pushtype/$pushkeytype => $vkeys";
+      FunctionCall('DbRegisterPushNotify',$owner,$vehicleid,$appid,$pushtype,$pushkeytype,$vkeys);
       }
     return;
     }
