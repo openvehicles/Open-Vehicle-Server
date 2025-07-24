@@ -137,7 +137,7 @@ sub io_tim
 
   ($lat,$lon,$bearing,$dist,$speed) = split /\s+/,$rally_line;
   $trip += $dist;
-  $odomoter += $dist;
+  $odometer += $dist;
   $kmideal = $kmideal-$dist;
   $kmest = int($kmideal*0.9);
   $soc = int(100*$kmideal/350);
@@ -191,12 +191,13 @@ sub statmsg
   my ($pem,$motor,$battery) = ($ambiant+10,$ambiant+20,$ambiant+5);
   my $cb = ($travelling == 0)?124:160;
   my ($ikmideal,$ikmest) = (int($kmideal),int($kmest));
+  my ($itrip,$iodometer) = (int($trip*10),int($odometer*10));
 
   my $updates=0;
   $updates+= &sendmessage("F","1.2.0,VIN123456789012346,5,0,TR");
   $updates+= &sendmessage("S","$soc,K,$volts,$amps,$state,$mode,$ikmideal,$ikmest,13,$chargetime,0,0,$substate,$stateN,$modeN");
   $updates+= &sendmessage("L","$lat,$lon,$bearing,0,1,1");
-  $updates+= &sendmessage("D","$cb,0,5,$pem,$motor,$battery,$trip,$odometer,$speed,0,$ambiant,0,1,1");
+  $updates+= &sendmessage("D","$cb,0,5,$pem,$motor,$battery,$itrip,$iodometer,$speed,0,$ambiant,0,1,1");
   $updates+= &sendmessage("W","29,$front,40,$back,29,$front,40,$back,1");
   $updates+= &sendmessage("g","DEMOCARS,$soc,$speed,$bearing,0,1,120,$lat,$lon");
 
