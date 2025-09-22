@@ -101,7 +101,7 @@ sub PushNotify
     my $pushcall = 'PushNotify:' . $row->{'pushtype'};
     if (FunctionRegistered($pushcall))
       {
-      AE::log info => "- - $vkey msg queued $rec{'pushkeytype'} notification for $rec{'pushkeytype'}:$rec{'appid'}";
+      AE::log info => "- - $vkey msg queued $row->{'pushtype'} notification for $rec{'pushkeytype'}:$rec{'appid'}";
       FunctionCall('PushNotify:'.$row->{'pushtype'}, \%rec);
       }
     else
