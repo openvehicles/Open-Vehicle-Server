@@ -145,7 +145,7 @@ sub DbOwnerNameByID
 
   return $cache_ownernamebyid{$id} if (defined $cache_ownernamebyid{$id});
 
-  my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `owner`=? and `status`=1 AND deleted="0000-00-00 00:00:00"');
+  my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `owner`=? and `status`=1 AND deleted=0');
   $sth->execute($id);
   my $row = $sth->fetchrow_hashref();
 
@@ -167,7 +167,7 @@ sub DBOwnerIDByName
 
   return $cache_owneridbyname{$name} if (defined $cache_owneridbyname{$name});
 
-  my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `name`=? and `status`=1 AND deleted="0000-00-00 00:00:00"');
+  my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `name`=? and `status`=1 AND deleted=0');
   $sth->execute($name);
   my $row = $sth->fetchrow_hashref();
 
@@ -364,7 +364,7 @@ sub DbGetOwner
   {
   my ($ownername) = @_;
 
-  my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `name`=? and `status`=1 AND deleted="0000-00-00 00:00:00"');
+  my $sth = $db->prepare('SELECT * FROM ovms_owners WHERE `name`=? and `status`=1 AND deleted=0');
   $sth->execute($ownername);
   my $row = $sth->fetchrow_hashref();
   if (defined $row)
