@@ -306,7 +306,7 @@ sub DbGetHistoricalRecords
   {
   my ($ownername, $vehicleid, $recordtype, $since) = @_;
 
-  $since='0000-00-00' if (!defined $since);
+  $since='1970-01-01' if (!defined $since);
 
   my $sth = $db->prepare('SELECT * FROM ovms_historicalmessages WHERE owner=? AND vehicleid=? AND h_recordtype=? AND h_timestamp>? ORDER BY h_timestamp,h_recordnumber');
   $sth->execute(DBOwnerIDByName($ownername),$vehicleid,$recordtype,$since);
@@ -325,7 +325,7 @@ sub DbGetHistoricalSummary
   {
   my ($ownername, $vehicleid, $since) = @_;
 
-  $since='0000-00-00' if (!defined $since);
+  $since='1970-01-01' if (!defined $since);
 
   my $sth = $db->prepare('SELECT h_recordtype,COUNT(DISTINCT h_recordnumber) AS distinctrecs, COUNT(*) AS totalrecs, '
                        . 'SUM(LENGTH(h_recordtype)+LENGTH(h_data)+LENGTH(vehicleid)+20) AS totalsize, MIN(h_timestamp) AS first, MAX(h_timestamp) AS last '
