@@ -1044,7 +1044,7 @@ sub io_message
       {
       # Special case of an app requesting (non-paranoid) the historical data summary
       my ($h_since) = $3;
-      $h_since='0000-00-00' if (!defined $h_since);
+      $h_since='1970-01-01' if (!defined $h_since);
       my @rows = FunctionCall('DbGetHistoricalSummary',$owner,$vehicleid,$h_since);
       my $k = 0;
       foreach my $row (@rows)
@@ -1068,7 +1068,7 @@ sub io_message
       {
       # Special case of an app requesting (non-paranoid) the GPRS data
       my ($h_recordtype,$h_since) = split /,/,$3,2;
-      $h_since='0000-00-00' if (!defined $h_since);
+      $h_since='1970-01-01' if (!defined $h_since);
       my @rows = FunctionCall('DbGetHistoricalRecords', $owner, $vehicleid, $h_recordtype, $h_since);
       my $k = 0;
       foreach my $row (@rows)
